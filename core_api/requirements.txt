@@ -8,3 +8,4 @@ rich
 jsonschema
 pytest
 weasyprint   
+atheris
