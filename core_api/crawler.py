@@ -1,3 +1,7 @@
-def crawl(url):
-    # Temporary: return one fake endpoint
-    return [{"url": url, "params": ["id"]}]
+import requests
+
+URL = input("Enter the URL to crawl: ")
+resp = requests.get(URL)
+print("Status code", resp.status_code)
+print("\nResponse content: ")
+print(resp.text)
