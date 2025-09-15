@@ -1,0 +1,10 @@
+httpx>=0.24
+beautifulsoup4
+lxml
+tldextract
+jinja2
+requests
+rich
+jsonschema
+pytest
+weasyprint 
