@@ -5,6 +5,7 @@ tldextract
 jinja2
 requests
 rich
+json
 jsonschema
 pytest
 weasyprint   
@@ -27,3 +28,5 @@ pyjwt==2.6.0
 Flask==2.2.2
 python-dotenv==0.21.0
 colorama==0.4.6
+sys
+yaml
