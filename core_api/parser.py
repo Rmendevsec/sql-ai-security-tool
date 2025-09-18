@@ -1,258 +1,93 @@
-"""
-Advanced response parser for analyzing API responses.
-"""
-
 import json
-import xml.etree.ElementTree as ET
-from typing import Dict, List, Any, Optional
-import requests
+import re
+from urllib.parse import urlparse, parse_qs
+from ..utils.logger import Logger
 
-from .utils import is_json_response, detect_api_technology
-
-class APIResponseParser:
-    """Advanced parser for API responses."""
-    
+class APIParser:
     def __init__(self):
-        self.technologies = set()
-        self.data_structures = {}
-        self.authentication_methods = set()
-        self.rate_limits = {}
+        self.logger = Logger(__name__)
     
-    def parse_response(self, response: requests.Response) -> Dict[str, Any]:
-        """Parse an API response and extract useful information."""
-        result = {
-            'status_code': response.status_code,
-            'headers': dict(response.headers),
-            'technology': [],
-            'data_structure': {},
-            'authentication_methods': [],
-            'rate_limits': {},
-            'content_analysis': {}
-        }
+    def parse_swagger(self, content, base_url):
+        """Parse Swagger/OpenAPI documentation"""
+        endpoints = set()
         
-        # Detect technology
-        result['technology'] = detect_api_technology(response)
-        
-        # Check for authentication methods
-        result['authentication_methods'] = self.detect_authentication(response)
-        
-        # Check for rate limiting
-        result['rate_limits'] = self.detect_rate_limits(response)
-        
-        # Analyze content
-        result['content_analysis'] = self.analyze_content(response)
-        
-        return result
-    
-    def detect_authentication(self, response: requests.Response) -> List[str]:
-        """Detect authentication methods from response headers."""
-        auth_methods = []
-        headers = response.headers
-        
-        # Check WWW-Authenticate header
-        if 'WWW-Authenticate' in headers:
-            auth_header = headers['WWW-Authenticate'].lower()
-            if 'bearer' in auth_header:
-                auth_methods.append('Bearer Token')
-            if 'basic' in auth_header:
-                auth_methods.append('Basic Auth')
-            if 'digest' in auth_header:
-                auth_methods.append('Digest Auth')
-        
-        # Check for JWT in headers or cookies
-        if any('jwt' in key.lower() or 'authorization' in key.lower() 
-               for key in headers.keys()):
-            auth_methods.append('JWT')
-        
-        # Check for OAuth
-        if any('oauth' in key.lower() for key in headers.keys()):
-            auth_methods.append('OAuth')
-        
-        # Check for API keys
-        if any('api-key' in key.lower() or 'apikey' in key.lower() 
-               for key in headers.keys()):
-            auth_methods.append('API Key')
-        
-        return list(set(auth_methods))
-    
-    def detect_rate_limits(self, response: requests.Response) -> Dict[str, Any]:
-        """Detect rate limiting information from response headers."""
-        rate_limits = {}
-        headers = response.headers
-        
-        # Common rate limit headers
-        limit_headers = {
-            'X-RateLimit-Limit': 'limit',
-            'X-RateLimit-Remaining': 'remaining',
-            'X-RateLimit-Reset': 'reset',
-            'RateLimit-Limit': 'limit',
-            'RateLimit-Remaining': 'remaining',
-            'RateLimit-Reset': 'reset'
-        }
-        
-        for header, key in limit_headers.items():
-            if header in headers:
-                rate_limits[key] = headers[header]
-        
-        return rate_limits
-    
-    def analyze_content(self, response: requests.Response) -> Dict[str, Any]:
-        """Analyze the response content for structure and patterns."""
-        analysis = {
-            'content_type': response.headers.get('Content-Type', ''),
-            'size_bytes': len(response.content),
-            'is_json': False,
-            'is_xml': False,
-            'structure': {},
-            'sensitive_data_patterns': []
-        }
-        
-        content_type = response.headers.get('Content-Type', '').lower()
-        
-        # JSON analysis
-        if is_json_response(response):
-            analysis['is_json'] = True
-            try:
-                data = response.json()
-                analysis['structure'] = self.analyze_json_structure(data)
-                analysis['sensitive_data_patterns'] = self.find_sensitive_data(data)
-            except (json.JSONDecodeError, ValueError):
-                analysis['json_parse_error'] = True
-        
-        # XML analysis
-        elif 'xml' in content_type:
-            analysis['is_xml'] = True
-            try:
-                root = ET.fromstring(response.text)
-                analysis['structure'] = self.analyze_xml_structure(root)
-                analysis['sensitive_data_patterns'] = self.find_sensitive_data_xml(root)
-            except ET.ParseError:
-                analysis['xml_parse_error'] = True
-        
-        return analysis
-    
-    def analyze_json_structure(self, data: Any, path: str = "") -> Dict[str, Any]:
-        """Recursively analyze JSON structure."""
-        structure = {}
-        
-        if isinstance(data, dict):
-            for key, value in data.items():
-                new_path = f"{path}.{key}" if path else key
-                if isinstance(value, (dict, list)):
-                    structure[key] = {
-                        'type': type(value).__name__,
-                        'structure': self.analyze_json_structure(value, new_path)
-                    }
-                else:
-                    structure[key] = {
-                        'type': type(value).__name__,
-                        'value_sample': str(value)[:100] if value else None
-                    }
-        elif isinstance(data, list) and data:
-            # Analyze first item to infer structure
-            structure['[]'] = {
-                'type': 'array',
-                'item_structure': self.analyze_json_structure(data[0], f"{path}[]")
-            }
-        
-        return structure
-    
-    def analyze_xml_structure(self, element, depth: int = 0) -> Dict[str, Any]:
-        """Analyze XML structure."""
-        if depth > 5:  # Limit recursion depth
-            return {'type': 'element', 'depth_limit_reached': True}
-        
-        structure = {
-            'tag': element.tag,
-            'attributes': dict(element.attrib),
-            'children': {}
-        }
-        
-        # Group children by tag name
-        children_by_tag = {}
-        for child in element:
-            if child.tag not in children_by_tag:
-                children_by_tag[child.tag] = []
-            children_by_tag[child.tag].append(child)
-        
-        # Analyze children
-        for tag, children in children_by_tag.items():
-            if len(children) == 1:
-                structure['children'][tag] = self.analyze_xml_structure(children[0], depth + 1)
+        try:
+            if isinstance(content, str):
+                spec = json.loads(content)
             else:
-                # Multiple children with same tag - treat as array
-                structure['children'][tag] = {
-                    'type': 'array',
-                    'item_structure': self.analyze_xml_structure(children[0], depth + 1)
-                }
-        
-        return structure
+                spec = content
+            
+            # Check if it's OpenAPI 3.x
+            if 'openapi' in spec and spec['openapi'].startswith('3'):
+                servers = spec.get('servers', [{'url': base_url}])
+                base_path = servers[0]['url'] if servers else base_url
+                
+                for path, methods in spec.get('paths', {}).items():
+                    for method in methods.keys():
+                        if method.upper() in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']:
+                            full_url = urljoin(base_path, path)
+                            endpoints.add((full_url, method.upper()))
+            
+            # Check if it's Swagger 2.0
+            elif 'swagger' in spec and spec['swagger'] == '2.0':
+                base_path = spec.get('basePath', '')
+                host = spec.get('host', urlparse(base_url).netloc)
+                schemes = spec.get('schemes', ['https'])
+                
+                for path, methods in spec.get('paths', {}).items():
+                    for method in methods.keys():
+                        if method.upper() in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']:
+                            full_url = f"{schemes[0]}://{host}{base_path}{path}"
+                            endpoints.add((full_url, method.upper()))
+            
+            return endpoints
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing Swagger/OpenAPI: {str(e)}")
+            return set()
     
-    def find_sensitive_data(self, data: Any, path: str = "") -> List[Dict[str, str]]:
-        """Find potentially sensitive data in JSON structures."""
-        sensitive_patterns = [
-            ('email', r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'),
-            ('password', r'password|passwd|pwd', True),  # Case insensitive
-            ('token', r'[a-zA-Z0-9_-]{10,}'),
-            ('api_key', r'api[_-]?key', True),
-            ('credit_card', r'\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}'),
-            ('jwt', r'eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+')
+    def parse_robots_txt(self, content, base_url):
+        """Parse robots.txt for endpoints"""
+        endpoints = set()
+        
+        for line in content.split('\n'):
+            if line.startswith('Allow:') or line.startswith('Disallow:'):
+                path = line.split(':', 1)[1].strip()
+                if path and path != '/':
+                    endpoints.add(urljoin(base_url, path))
+        
+        return endpoints
+    
+    def parse_sitemap(self, content, base_url):
+        """Parse sitemap.xml for endpoints"""
+        endpoints = set()
+        
+        # Simple XML parsing for URLs
+        url_pattern = r'<loc>(.*?)</loc>'
+        matches = re.findall(url_pattern, content)
+        
+        for match in matches:
+            endpoints.add(match)
+        
+        return endpoints
+    
+    def find_api_docs(self, html_content, base_url):
+        """Find API documentation links in HTML"""
+        endpoints = set()
+        
+        # Common API documentation patterns
+        patterns = [
+            r'href=[\'"](/swagger[^\'"]*)[\'"]',
+            r'href=[\'"](/api/docs[^\'"]*)[\'"]',
+            r'href=[\'"](/openapi[^\'"]*)[\'"]',
+            r'href=[\'"]([^\'"]*swagger-ui[^\'"]*)[\'"]',
+            r'href=[\'"](/redoc[^\'"]*)[\'"]',
+            r'href=[\'"](/api/v[0-9]/docs[^\'"]*)[\'"]'
         ]
         
-        findings = []
+        for pattern in patterns:
+            matches = re.findall(pattern, html_content, re.IGNORECASE)
+            for match in matches:
+                endpoints.add(urljoin(base_url, match))
         
-        if isinstance(data, dict):
-            for key, value in data.items():
-                new_path = f"{path}.{key}" if path else key
-                
-                # Check key names
-                for pattern_name, pattern, is_regex in sensitive_patterns:
-                    if is_regex:
-                        if re.search(pattern, key, re.IGNORECASE if isinstance(is_regex, bool) and is_regex else 0):
-                            findings.append({
-                                'path': new_path,
-                                'pattern': pattern_name,
-                                'type': 'key_name',
-                                'value': key
-                            })
-                    elif pattern in key.lower():
-                        findings.append({
-                            'path': new_path,
-                            'pattern': pattern_name,
-                            'type': 'key_name',
-                            'value': key
-                        })
-                
-                # Recursively check values
-                if isinstance(value, (dict, list)):
-                    findings.extend(self.find_sensitive_data(value, new_path))
-                elif isinstance(value, str):
-                    for pattern_name, pattern, is_regex in sensitive_patterns:
-                        if is_regex:
-                            if re.search(pattern, value, re.IGNORECASE if isinstance(is_regex, bool) and is_regex else 0):
-                                findings.append({
-                                    'path': new_path,
-                                    'pattern': pattern_name,
-                                    'type': 'value_content',
-                                    'value_sample': value[:50] + '...' if len(value) > 50 else value
-                                })
-                        elif pattern in value.lower():
-                            findings.append({
-                                'path': new_path,
-                                'pattern': pattern_name,
-                                'type': 'value_content',
-                                'value_sample': value[:50] + '...' if len(value) > 50 else value
-                            })
-        
-        elif isinstance(data, list):
-            for i, item in enumerate(data):
-                new_path = f"{path}[{i}]"
-                findings.extend(self.find_sensitive_data(item, new_path))
-        
-        return findings
-    
-    def find_sensitive_data_xml(self, element, path: str = "") -> List[Dict[str, str]]:
-        """Find potentially sensitive data in XML structures."""
-        # Similar implementation to find_sensitive_data but for XML
-        # This would check element names, attributes, and text content
-        return []  # Implementation omitted for brevity
+        return endpoints

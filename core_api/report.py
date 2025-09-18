@@ -1,156 +1,163 @@
-"""
-Report generator for API security testing results.
-"""
-
 import json
 import html
-from typing import Dict, List, Any
 from datetime import datetime
+from ..utils.logger import Logger
 
-class APIReportGenerator:
-    """Generate reports for API security testing."""
+class APIReport:
+    def __init__(self):
+        self.logger = Logger(__name__)
+        self.findings = []
     
-    def __init__(self, results: Dict[str, Any]):
-        self.results = results
-        self.timestamp = datetime.now().isoformat()
+    def add_finding(self, finding):
+        """Add a finding to the report"""
+        finding['timestamp'] = datetime.now().isoformat()
+        self.findings.append(finding)
+        self.logger.warning(f"VULNERABILITY: {finding['type']} at {finding['url']}")
     
-    def generate_json_report(self, output_file: str = None) -> str:
-        """Generate a JSON report."""
+    def generate_json_report(self, filename=None):
+        """Generate a JSON report"""
         report = {
-            'metadata': {
-                'generated_at': self.timestamp,
-                'tool': 'Core API Security Scanner'
-            },
-            'results': self.results
+            "generated_at": datetime.now().isoformat(),
+            "findings": self.findings
         }
         
-        json_report = json.dumps(report, indent=2)
+        if filename:
+            with open(filename, 'w') as f:
+                json.dump(report, f, indent=2)
         
-        if output_file:
-            with open(output_file, 'w') as f:
-                f.write(json_report)
-        
-        return json_report
+        return json.dumps(report, indent=2)
     
-    def generate_html_report(self, output_file: str = None) -> str:
-        """Generate an HTML report."""
-        html_template = f"""
+    def generate_html_report(self, filename=None):
+        """Generate an HTML report"""
+        severity_colors = {
+            "High": "danger",
+            "Medium": "warning",
+            "Low": "info"
+        }
+        
+        html_content = f"""
         <!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>API Security Scan Report</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                h1 {{ color: #333; }}
-                .summary {{ background-color: #f5f5f5; padding: 20px; border-radius: 5px; }}
-                .vulnerability {{ border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }}
-                .critical {{ background-color: #ffebee; border-left: 5px solid #d32f2f; }}
-                .high {{ background-color: #fff3e0; border-left: 5px solid #f57c00; }}
-                .medium {{ background-color: #fff9c4; border-left: 5px solid #ffeb3b; }}
-                .low {{ background-color: #e8f5e9; border-left: 5px solid #4caf50; }}
-                .info {{ background-color: #e3f2fd; border-left: 5px solid #2196f3; }}
-                pre {{ background-color: #f5f5f5; padding: 10px; overflow-x: auto; }}
+                .vuln-card {{ margin-bottom: 20px; }}
+                .severity-high {{ border-left: 5px solid #dc3545; }}
+                .severity-medium {{ border-left: 5px solid #ffc107; }}
+                .severity-low {{ border-left: 5px solid #0dcaf0; }}
             </style>
         </head>
         <body>
-            <h1>API Security Scan Report</h1>
-            <p>Generated at: {self.timestamp}</p>
+            <div class="container mt-5">
+                <h1 class="text-center mb-4">API Security Scan Report</h1>
+                <p class="text-center">Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card bg-danger text-white text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">High</h5>
+                                <h3 class="card-text">{len([f for f in self.findings if f['severity'] == 'High'])}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-warning text-dark text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">Medium</h5>
+                                <h3 class="card-text">{len([f for f in self.findings if f['severity'] == 'Medium'])}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-info text-white text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">Low</h5>
+                                <h3 class="card-text">{len([f for f in self.findings if f['severity'] == 'Low'])}</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h2 class="mb-3">Findings</h2>
+        """
+        
+        for finding in self.findings:
+            severity_class = severity_colors.get(finding['severity'], '')
             
-            <div class="summary">
-                <h2>Scan Summary</h2>
-                <p>Total endpoints scanned: {len(self.results.get('endpoints', []))}</p>
-                <p>Total vulnerabilities found: {self._count_vulnerabilities()}</p>
+            html_content += f"""
+                <div class="card vuln-card severity-{finding['severity'].lower()} {severity_class}">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <span class="badge bg-{severity_colors.get(finding['severity'], 'secondary')}">
+                                {finding['severity']}
+                            </span>
+                            {html.escape(finding['type'])}
+                        </h5>
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            URL: {html.escape(finding['url'])}
+                        </h6>
+                        <p class="card-text">
+                            <strong>Method:</strong> {finding.get('method', 'N/A')}<br>
+                            <strong>Parameter:</strong> {finding.get('parameter', 'N/A')}<br>
+                            <strong>Payload:</strong> <code>{html.escape(str(finding.get('payload', 'N/A')))}</code><br>
+                            <strong>Evidence:</strong> {html.escape(finding.get('evidence', 'N/A'))}
+                        </p>
+                        <small class="text-muted">
+                            Detected at: {finding.get('timestamp', 'N/A')}
+                        </small>
+                    </div>
+                </div>
+            """
+        
+        html_content += """
             </div>
-            
-            <h2>Discovered Endpoints</h2>
-            <ul>
-                {self._generate_endpoints_list()}
-            </ul>
-            
-            <h2>Vulnerabilities</h2>
-            {self._generate_vulnerabilities_section()}
-            
-            <h2>Detailed Findings</h2>
-            {self._generate_detailed_findings()}
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
         </body>
         </html>
         """
         
-        if output_file:
-            with open(output_file, 'w') as f:
-                f.write(html_template)
+        if filename:
+            with open(filename, 'w') as f:
+                f.write(html_content)
         
-        return html_template
+        return html_content
     
-    def _count_vulnerabilities(self) -> int:
-        """Count total vulnerabilities found."""
-        count = 0
-        for endpoint, findings in self.results.get('vulnerabilities', {}).items():
-            count += len(findings)
-        return count
-    
-    def _generate_endpoints_list(self) -> str:
-        """Generate HTML list of discovered endpoints."""
-        endpoints_html = []
-        for endpoint in self.results.get('endpoints', []):
-            endpoints_html.append(f"<li><code>{html.escape(endpoint)}</code></li>")
-        return "\n".join(endpoints_html)
-    
-    def _generate_vulnerabilities_section(self) -> str:
-        """Generate HTML section for vulnerabilities."""
-        vulnerabilities = self.results.get('vulnerabilities', {})
+    def generate_markdown_report(self, filename=None):
+        """Generate a Markdown report"""
+        markdown = f"""# API Security Scan Report\n\n"""
+        markdown += f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         
-        if not vulnerabilities:
-            return "<p>No vulnerabilities found.</p>"
+        # Summary
+        markdown += "## Summary\n\n"
+        markdown += f"- **High Severity**: {len([f for f in self.findings if f['severity'] == 'High'])}\n"
+        markdown += f"- **Medium Severity**: {len([f for f in self.findings if f['severity'] == 'Medium'])}\n"
+        markdown += f"- **Low Severity**: {len([f for f in self.findings if f['severity'] == 'Low'])}\n"
+        markdown += f"- **Total Findings**: {len(self.findings)}\n\n"
         
-        vuln_html = []
-        for endpoint, findings in vulnerabilities.items():
-            for finding in findings:
-                severity_class = finding.get('severity', 'info').lower()
-                vuln_html.append(f"""
-                <div class="vulnerability {severity_class}">
-                    <h3>{html.escape(finding.get('type', 'Unknown'))}</h3>
-                    <p><strong>Endpoint:</strong> <code>{html.escape(endpoint)}</code></p>
-                    <p><strong>Severity:</strong> {html.escape(finding.get('severity', 'Unknown'))}</p>
-                    <p><strong>Parameter:</strong> {html.escape(finding.get('parameter', 'N/A'))}</p>
-                    <p><strong>Payload:</strong> <code>{html.escape(finding.get('payload', 'N/A'))}</code></p>
-                    <p><strong>Evidence:</strong> {html.escape(finding.get('evidence', 'N/A'))}</p>
-                </div>
-                """)
+        # Findings
+        markdown += "## Findings\n\n"
         
-        return "\n".join(vuln_html)
-    
-    def _generate_detailed_findings(self) -> str:
-        """Generate detailed findings section."""
-        details_html = []
-        
-        # Add authentication findings
-        auth_findings = self.results.get('authentication', {})
-        if auth_findings:
-            details_html.append("<h3>Authentication</h3>")
-            details_html.append(f"<pre>{json.dumps(auth_findings, indent=2)}</pre>")
-        
-        # Add technology findings
-        tech_findings = self.results.get('technology', {})
-        if tech_findings:
-            details_html.append("<h3>Technology Stack</h3>")
-            details_html.append(f"<pre>{json.dumps(tech_findings, indent=2)}</pre>")
-        
-        return "\n".join(details_html)
-    
-    def generate_pdf_report(self, output_file: str = None) -> str:
-        """Generate a PDF report (requires pdfkit and wkhtmltopdf)."""
-        try:
-            import pdfkit
-            html_report = self.generate_html_report()
+        for finding in self.findings:
+            severity_emoji = {
+                "High": "🔴",
+                "Medium": "🟡",
+                "Low": "🔵"
+            }.get(finding['severity'], "⚪")
             
-            if output_file:
-                pdfkit.from_string(html_report, output_file)
-                return f"PDF report generated: {output_file}"
-            else:
-                # Return as base64 or save to temporary file
-                return "PDF generation requires output file path"
-        except ImportError:
-            return "PDF generation requires pdfkit and wkhtmltopdf"
+            markdown += f"### {severity_emoji} {finding['type']} ({finding['severity']})\n\n"
+            markdown += f"- **URL**: {finding['url']}\n"
+            markdown += f"- **Method**: {finding.get('method', 'N/A')}\n"
+            markdown += f"- **Parameter**: {finding.get('parameter', 'N/A')}\n"
+            markdown += f"- **Payload**: `{finding.get('payload', 'N/A')}`\n"
+            markdown += f"- **Evidence**: {finding.get('evidence', 'N/A')}\n"
+            markdown += f"- **Timestamp**: {finding.get('timestamp', 'N/A')}\n\n"
+        
+        if filename:
+            with open(filename, 'w') as f:
+                f.write(markdown)
+        
+        return markdown

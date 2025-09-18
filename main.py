@@ -89,3 +89,42 @@ def main():
 
 if __name__ == "__main__":
     main()
+# usage example (not a file, paste into your main runner)
+from core_api.crawler import crawl, discover_openapi
+from core_api.parser import parse_openapi
+from core_api.fuzzer import fuzz_many
+from core_api.report import generate_report, summarize_results
+import requests, json
+
+base = "https://example-target.test"  # replace with target (must have permission)
+session = requests.Session()
+
+# 1) quick openapi discovery
+specs = discover_openapi(session, base)
+endpoints = []
+for s in specs:
+    resp = session.get(s)
+    try:
+        j = resp.json()
+        endpoints += parse_openapi(j, base_url=base)
+    except Exception:
+        continue
+
+# 2) generic crawl for more endpoints
+pages = crawl(base, max_pages=30, session=session)
+for p in pages:
+    # naive heuristic: keep URLs that look like API endpoints
+    if "/api/" in p or p.endswith(".json"):
+        endpoints.append({"url": p, "method": "GET"})
+
+# dedupe
+unique = { (e['url'], e.get('method','GET')): e for e in endpoints }.values()
+endpoints = list(unique)
+
+# 3) run conservative fuzz (consent must be True)
+results = fuzz_many(endpoints, consent=True, auth_conf=None, concurrency=4)
+
+# 4) save report
+path = generate_report(results)
+print("Report saved to:", path)
+print(summarize_results(results))

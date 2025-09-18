@@ -1,204 +1,123 @@
-"""
-Advanced API crawler for discovering endpoints and parameters.
-"""
-
 import re
-import time
-from typing import Dict, List, Set, Optional, Tuple
-from urllib.parse import urlparse, urljoin, parse_qs
-from bs4 import BeautifulSoup
 import requests
+from urllib.parse import urljoin, urlparse
+from bs4 import BeautifulSoup
+from ..utils.http_client import HTTPClient
+from ..utils.logger import Logger
 
-from .utils import RequestUtils, is_api_endpoint, normalize_url, extract_parameters_from_url
-
-class AdvancedAPICrawler:
-    """Advanced crawler for API endpoint discovery."""
-    
-    def __init__(self, base_url: str, max_depth: int = 3, delay: float = 0.5, 
-                 user_agent: str = None, cookies: Dict = None, headers: Dict = None):
-        self.base_url = base_url
-        self.max_depth = max_depth
-        self.delay = delay
-        self.visited_urls = set()
+class APICrawler:
+    def __init__(self):
+        self.logger = Logger(__name__)
+        self.http_client = HTTPClient()
         self.discovered_endpoints = set()
-        self.discovered_parameters = set()
-        self.request_utils = RequestUtils()
+        self.js_files = set()
         
-        # Custom headers and cookies
-        self.headers = headers or {}
-        if user_agent:
-            self.headers['User-Agent'] = user_agent
-        
-        self.cookies = cookies or {}
+    def extract_endpoints_from_js(self, js_content, base_url):
+        """Extract potential API endpoints from JavaScript files"""
+        endpoints = set()
         
         # Common API endpoint patterns
-        self.api_patterns = [
-            r'/api/\w+', r'/v\d+/\w+', r'/graphql', r'/rest/\w+', 
-            r'/json/\w+', r'/soap/\w+', r'/wsdl', r'/webapi/\w+'
-        ]
-    
-    def is_same_domain(self, url: str) -> bool:
-        """Check if URL belongs to the same domain as base URL."""
-        base_domain = urlparse(self.base_url).netloc
-        url_domain = urlparse(url).netloc
-        return base_domain == url_domain
-    
-    def should_crawl(self, url: str) -> bool:
-        """Determine if a URL should be crawled."""
-        # Skip non-HTTP URLs
-        if not url.startswith(('http://', 'https://')):
-            return False
-        
-        # Skip URLs from different domains
-        if not self.is_same_domain(url):
-            return False
-        
-        # Skip already visited URLs
-        if url in self.visited_urls:
-            return False
-        
-        # Skip common non-API resources
-        excluded_extensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.css', '.js', '.ico']
-        if any(url.lower().endswith(ext) for ext in excluded_extensions):
-            return False
-        
-        return True
-    
-    def extract_urls_from_html(self, html_content: str, base_url: str) -> Set[str]:
-        """Extract URLs from HTML content."""
-        urls = set()
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # Extract links
-        for link in soup.find_all('a', href=True):
-            href = link['href']
-            full_url = urljoin(base_url, href)
-            if self.should_crawl(full_url):
-                urls.add(normalize_url(full_url))
-        
-        # Extract form actions
-        for form in soup.find_all('form', action=True):
-            action = form['action']
-            full_url = urljoin(base_url, action)
-            if self.should_crawl(full_url):
-                urls.add(normalize_url(full_url))
-        
-        # Extract script sources
-        for script in soup.find_all('script', src=True):
-            src = script['src']
-            full_url = urljoin(base_url, src)
-            if self.should_crawl(full_url):
-                urls.add(normalize_url(full_url))
-        
-        return urls
-    
-    def extract_urls_from_js(self, js_content: str, base_url: str) -> Set[str]:
-        """Extract URLs from JavaScript content."""
-        urls = set()
-        
-        # Patterns for URLs in JavaScript
         patterns = [
-            r'[\"\'](/[^\"\']+?)[\"\']',  # Relative URLs in quotes
-            r'[\"\'](https?://[^\"\']+?)[\"\']',  # Absolute URLs in quotes
-            r'url\([\"\']?([^\"\')]+)[\"\']?\)',  # CSS url() patterns
-            r'fetch\([\"\']([^\"\']+)[\"\']\)',  # Fetch API calls
-            r'axios\.\w+\([\"\']([^\"\']+)[\"\']\)',  # Axios calls
-            r'\.ajax\([^}]*url[\s:]*[\"\']([^\"\']+)[\"\']',  # jQuery AJAX
+            r'["\'](/[a-zA-Z0-9_\-/.]+)["\']',
+            r'fetch\(["\']([a-zA-Z0-9_\-/.]+)["\']',
+            r'axios\.(get|post|put|delete)\(["\']([a-zA-Z0-9_\-/.]+)["\']',
+            r'\.ajax\([^)]*url["\']?:["\']([a-zA-Z0-9_\-/.]+)["\']',
+            r'window\.location\.href\s*=\s*["\']([a-zA-Z0-9_\-/.]+)["\']'
         ]
         
         for pattern in patterns:
             matches = re.findall(pattern, js_content)
             for match in matches:
-                full_url = urljoin(base_url, match)
-                if self.should_crawl(full_url):
-                    urls.add(normalize_url(full_url))
+                # Handle different regex group captures
+                endpoint = match[1] if isinstance(match, tuple) and len(match) > 1 else match
+                if endpoint.startswith(('http://', 'https://')):
+                    endpoints.add(endpoint)
+                else:
+                    endpoints.add(urljoin(base_url, endpoint))
         
-        return urls
+        return endpoints
     
-    def extract_parameters(self, url: str, response: requests.Response) -> None:
-        """Extract parameters from URL and response."""
-        # Extract from URL query string
-        url_params = extract_parameters_from_url(url)
-        self.discovered_parameters.update(url_params)
+    def find_js_files(self, soup, base_url):
+        """Find all JavaScript files referenced in the page"""
+        js_urls = set()
         
-        # TODO: Extract from JSON/XML response bodies
-        # This would require parsing response content to find nested parameters
+        for script in soup.find_all('script'):
+            if script.get('src'):
+                js_url = urljoin(base_url, script['src'])
+                js_urls.add(js_url)
+                
+        return js_urls
     
-    def crawl_page(self, url: str, depth: int = 0) -> None:
-        """Crawl a single page and extract endpoints/parameters."""
-        if depth > self.max_depth:
-            return
-        
-        if url in self.visited_urls:
-            return
-        
-        self.visited_urls.add(url)
-        print(f"Crawling: {url} (Depth: {depth})")
-        
-        # Make request with custom headers and cookies
-        response = self.request_utils.make_request(
-            url, 
-            headers=self.headers, 
-            cookies=self.cookies
-        )
-        
-        if not response or response.status_code != 200:
-            return
-        
-        # Check if this is an API endpoint
-        if is_api_endpoint(url, response):
-            self.discovered_endpoints.add(url)
-            self.extract_parameters(url, response)
-        
-        # Extract URLs based on content type
-        content_type = response.headers.get('Content-Type', '').lower()
-        new_urls = set()
-        
-        if 'text/html' in content_type:
-            new_urls = self.extract_urls_from_html(response.text, url)
-        elif 'application/javascript' in content_type or 'text/javascript' in content_type:
-            new_urls = self.extract_urls_from_js(response.text, url)
-        
-        # Recursively crawl discovered URLs
-        for new_url in new_urls:
-            time.sleep(self.delay)  # Respectful crawling
-            self.crawl_page(new_url, depth + 1)
+    def crawl_page(self, url):
+        """Crawl a single page for endpoints"""
+        try:
+            response = self.http_client.get(url)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find all links
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                if href.startswith(('http://', 'https://')):
+                    self.discovered_endpoints.add(href)
+                else:
+                    self.discovered_endpoints.add(urljoin(url, href))
+            
+            # Find all forms
+            for form in soup.find_all('form', action=True):
+                action = form['action']
+                if action:
+                    if action.startswith(('http://', 'https://')):
+                        self.discovered_endpoints.add(action)
+                    else:
+                        self.discovered_endpoints.add(urljoin(url, action))
+            
+            # Find and process JavaScript files
+            js_files = self.find_js_files(soup, url)
+            for js_file in js_files:
+                if js_file not in self.js_files:
+                    self.js_files.add(js_file)
+                    try:
+                        js_response = self.http_client.get(js_file)
+                        js_endpoints = self.extract_endpoints_from_js(js_response.text, url)
+                        self.discovered_endpoints.update(js_endpoints)
+                    except Exception as e:
+                        self.logger.error(f"Error processing JS file {js_file}: {str(e)}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error crawling {url}: {str(e)}")
+            return False
     
-    def find_api_endpoints(self) -> Dict[str, List[str]]:
-        """Main method to discover API endpoints."""
-        print(f"Starting API endpoint discovery on: {self.base_url}")
+    def crawl(self, base_url, max_depth=2):
+        """Main crawl method"""
+        self.logger.info(f"Starting crawl of {base_url}")
         
-        # Start crawling from base URL
-        self.crawl_page(self.base_url)
+        # Start with the base URL
+        to_crawl = {base_url}
+        crawled = set()
+        depth = 0
         
-        # Also try common API endpoints
-        self.try_common_api_endpoints()
+        while to_crawl and depth < max_depth:
+            next_to_crawl = set()
+            
+            for url in to_crawl:
+                if url not in crawled:
+                    self.logger.info(f"Crawling: {url}")
+                    self.crawl_page(url)
+                    crawled.add(url)
+                    
+                    # Add discovered endpoints to next crawl batch
+                    for endpoint in self.discovered_endpoints:
+                        parsed = urlparse(endpoint)
+                        base_parsed = urlparse(base_url)
+                        
+                        # Only crawl same-domain endpoints
+                        if parsed.netloc == base_parsed.netloc:
+                            next_to_crawl.add(endpoint)
+            
+            to_crawl = next_to_crawl - crawled
+            depth += 1
         
-        return {
-            'endpoints': list(self.discovered_endpoints),
-            'parameters': list(self.discovered_parameters)
-        }
-    
-    def try_common_api_endpoints(self) -> None:
-        """Try common API endpoint patterns."""
-        common_paths = [
-            '/api', '/api/v1', '/api/v2', '/v1', '/v2', '/graphql',
-            '/rest', '/json', '/xml', '/soap', '/webapi', '/service'
-        ]
-        
-        for path in common_paths:
-            test_url = urljoin(self.base_url, path)
-            if self.should_crawl(test_url):
-                response = self.request_utils.make_request(test_url)
-                if response and response.status_code == 200:
-                    if is_api_endpoint(test_url, response):
-                        self.discovered_endpoints.add(test_url)
-                        self.extract_parameters(test_url, response)
-    
-    def get_discovery_results(self) -> Dict[str, List[str]]:
-        """Get the discovery results."""
-        return {
-            'endpoints': sorted(list(self.discovered_endpoints)),
-            'parameters': sorted(list(self.discovered_parameters)),
-            'visited_urls': sorted(list(self.visited_urls))
-        }
+        self.logger.info(f"Crawling completed. Found {len(self.discovered_endpoints)} endpoints")
+        return list(self.discovered_endpoints)
