@@ -1,41 +1,28 @@
 {
-    "target": "https://play.picoctf.org/login?redirect=/login",
+    "target": "http://vulnbank.org/",
     "endpoints": [
-        {
-            "url": "https://play.picoctf.org/login?redirect=/login",
-            "params": [
-                "id"
-            ]
-        }
+        "http://vulnbank.org/api/docs/favicon-16x16.png",
+        "http://vulnbank.org/oauth2-redirect.html",
+        "http://vulnbank.org/static/favicon-16.svg",
+        "https://x.com/commando_skiipz",
+        "http://vulnbank.org/api/docs/index.css",
+        "http://vulnbank.org/static/favicon.svg",
+        "http://vulnbank.org/static/style.css",
+        "http://vulnbank.org/api/docs",
+        "https://www.linkedin.com/in/badmus-al-amir/",
+        "http://vulnbank.org/",
+        "http://vulnbank.org/forgot-password",
+        "http://vulnbank.org/register",
+        "http://vulnbank.org/api/docs/swagger-ui.css",
+        "https://github.com/Commando-X/vuln-bank",
+        "http://vulnbank.org/static/auth.css",
+        "https://github.com/Commando-X",
+        "http://vulnbank.org/login",
+        "https://github.com/Commando-X/vuln-bank-mobile",
+        "http://vulnbank.org/api/docs/favicon-32x32.png",
+        "https://github.com/Commando-X/vuln-bank?tab=readme-ov-file#testing-guide-"
     ],
-    "vulnerabilities": [
-        {
-            "url": "https://play.picoctf.org/login?redirect=/login",
-            "param": "id",
-            "payload": "' OR '1'='1",
-            "vulnerable": true
-        }
-    ],
-    "exploitation": [
-        {
-            "url": "https://play.picoctf.org/login?redirect=/login",
-            "dbms": "MySQL",
-            "database": "users_db",
-            "tables": [
-                "users",
-                "orders"
-            ],
-            "sample_data": {
-                "users": [
-                    {
-                        "id": 1,
-                        "username": "admin"
-                    }
-                ]
-            }
-        }
-    ],
-    "ai_explanations": [
-        "The parameter 'id' in https://play.picoctf.org/login?redirect=/login is vulnerable. Mitigation: use parameterized queries."
-    ]
+    "vulnerabilities": [],
+    "exploitation": [],
+    "ai_explanations": []
 }

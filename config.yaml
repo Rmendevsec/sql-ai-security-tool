@@ -1,0 +1,12 @@
+http:
+  timeout: 10
+  user_agent: "APISecurityScanner/1.0"
+  verify_ssl: false
+
+scanning:
+  max_depth: 2
+  max_threads: 10
+  delay_between_requests: 0.1
+
+reporting:
+  default_format: "markdown"

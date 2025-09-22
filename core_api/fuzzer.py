@@ -1,186 +1,171 @@
+"""
+API Fuzzer - Tests endpoints for vulnerabilities
+"""
+
+import concurrent.futures
 import json
-import time
-from urllib.parse import urljoin
-from ..utils.http_client import HTTPClient
-from ..utils.logger import Logger
+import re
+from urllib.parse import urlparse, parse_qs
+from utils.http_client import HTTPClient
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 class APIFuzzer:
     def __init__(self):
-        self.logger = Logger(__name__)
         self.http_client = HTTPClient()
-        self.vulnerabilities = []
+        self.findings = []
+        
+        # Payloads for different vulnerability types
+        self.payloads = {
+            "sql_injection": [
+                "' OR '1'='1", "' UNION SELECT NULL--", "admin'--", 
+                "' OR 1=1--", "1; DROP TABLE users"
+            ],
+            "xss": [
+                "<script>alert('XSS')</script>", "\"><script>alert('XSS')</script>",
+                "javascript:alert('XSS')", "onload=alert('XSS')"
+            ],
+            "path_traversal": [
+                "../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts"
+            ],
+            "command_injection": [
+                "; ls -la", "| whoami", "&& id"
+            ],
+            "idor": [
+                "../user/1", "./admin/../user/2", "user/0"
+            ]
+        }
     
-    def load_payloads(self, payload_file="payloads/api_fuzz_payloads.json"):
-        """Load fuzzing payloads from file"""
+    def test_parameter(self, url, param_name, param_value, payload, payload_type, method="GET"):
+        """Test a single parameter with a payload"""
         try:
-            with open(payload_file, 'r') as f:
-                return json.load(f)
+            parsed_url = urlparse(url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+            query_params = parse_qs(parsed_url.query)
+            
+            # Replace the parameter value with payload
+            query_params[param_name] = [payload]
+            
+            # Build new URL with fuzzed parameter
+            new_query = "&".join([f"{k}={v[0]}" for k, v in query_params.items()])
+            fuzzed_url = f"{base_url}?{new_query}"
+            
+            response = self.http_client.get(fuzzed_url)
+            
+            # Check for vulnerabilities
+            vuln_info = self.check_response(response, payload_type, payload, param_name, url, method)
+            if vuln_info:
+                self.findings.append(vuln_info)
+                return vuln_info
+            
         except Exception as e:
-            self.logger.error(f"Error loading payloads: {str(e)}")
-            return {
-                "sql_injection": ["' OR '1'='1", "' UNION SELECT NULL--", "1; DROP TABLE users"],
-                "xss": ["<script>alert('XSS')</script>", "\"><script>alert('XSS')</script>"],
-                "path_traversal": ["../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts"],
-                "command_injection": ["; ls -la", "| cat /etc/passwd", "&& whoami"],
-                "idor": ["../user/1", "./admin/../user/2", "user/12345"]
-            }
+            logger.error(f"Error testing {url}: {str(e)}")
+        return None
     
-    def fuzz_parameter(self, url, param, payloads, method="GET"):
-        """Fuzz a specific parameter with payloads"""
-        results = []
-        
-        for payload_name, payload_list in payloads.items():
-            for payload in payload_list:
-                try:
-                    # Prepare the request based on method
-                    if method.upper() == "GET":
-                        # For GET requests, add payload to query parameters
-                        parsed_url = urlparse(url)
-                        query_params = parse_qs(parsed_url.query)
-                        query_params[param] = payload
-                        
-                        # Rebuild URL with fuzzed parameter
-                        fuzzed_url = parsed_url._replace(query=None).geturl()
-                        first_param = True
-                        for key, values in query_params.items():
-                            for value in values:
-                                fuzzed_url += "?" if first_param else "&"
-                                fuzzed_url += f"{key}={value}"
-                                first_param = False
-                        
-                        response = self.http_client.get(fuzzed_url)
-                    
-                    else:
-                        # For POST/PUT requests, add payload to body
-                        if method.upper() in ["POST", "PUT"]:
-                            data = {param: payload}
-                            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-                            response = self.http_client.request(method, url, data=data, headers=headers)
-                        else:
-                            self.logger.warning(f"Method {method} not supported for parameter fuzzing")
-                            continue
-                    
-                    # Analyze response for potential vulnerabilities
-                    vuln_info = self.analyze_response(response, payload_name, payload, param, url, method)
-                    if vuln_info:
-                        results.append(vuln_info)
-                    
-                    # Be polite with delay between requests
-                    time.sleep(0.1)
-                    
-                except Exception as e:
-                    self.logger.error(f"Error fuzzing {param} with {payload}: {str(e)}")
-        
-        return results
-    
-    def analyze_response(self, response, payload_type, payload, param, url, method):
-        """Analyze response for potential vulnerabilities"""
-        vuln_info = None
+    def check_response(self, response, payload_type, payload, param_name, url, method):
+        """Check response for vulnerability indicators"""
+        text = response.text.lower()
         
         # SQL Injection detection
-        if payload_type == "sql_injection":
-            sql_errors = [
-                "sql syntax", "mysql_fetch", "ORA-01756", 
-                "Microsoft OLE DB Provider", "PostgreSQL query failed"
-            ]
-            
-            if any(error in response.text.lower() for error in sql_errors):
-                vuln_info = {
-                    "type": "SQL Injection",
-                    "url": url,
-                    "parameter": param,
-                    "method": method,
-                    "payload": payload,
-                    "evidence": "SQL error in response",
-                    "severity": "High"
-                }
+        if payload_type == "sql_injection" and any(error in text for error in [
+            "sql syntax", "mysql_fetch", "ora-01756", "postgresql"
+        ]):
+            return {
+                "type": "SQL Injection",
+                "url": url,
+                "parameter": param_name,
+                "method": method,
+                "payload": payload,
+                "evidence": "SQL error in response",
+                "severity": "High"
+            }
         
         # XSS detection
-        elif payload_type == "xss":
-            if payload in response.text and response.status_code in [200, 201]:
-                vuln_info = {
-                    "type": "XSS",
-                    "url": url,
-                    "parameter": param,
-                    "method": method,
-                    "payload": payload,
-                    "evidence": "Payload reflected in response",
-                    "severity": "Medium"
-                }
+        if payload_type == "xss" and response.status_code == 200 and payload in response.text:
+            return {
+                "type": "XSS",
+                "url": url,
+                "parameter": param_name,
+                "method": method,
+                "payload": payload,
+                "evidence": "XSS payload reflected in response",
+                "severity": "Medium"
+            }
         
         # Path Traversal detection
-        elif payload_type == "path_traversal":
-            if any(indicator in response.text for indicator in ["root:", "daemon:", "/bin/bash"]):
-                vuln_info = {
-                    "type": "Path Traversal",
-                    "url": url,
-                    "parameter": param,
-                    "method": method,
-                    "payload": payload,
-                    "evidence": "Sensitive file content in response",
-                    "severity": "High"
-                }
+        if payload_type == "path_traversal" and any(indicator in text for indicator in [
+            "root:", "daemon:", "/bin/bash", "etc/passwd"
+        ]):
+            return {
+                "type": "Path Traversal",
+                "url": url,
+                "parameter": param_name,
+                "method": method,
+                "payload": payload,
+                "evidence": "Sensitive file content in response",
+                "severity": "High"
+            }
         
         # Command Injection detection
-        elif payload_type == "command_injection":
-            command_indicators = [
-                "bin/bash", "www/html", "etc/passwd", "Permission denied",
-                "cannot access", "No such file or directory"
-            ]
-            
-            if any(indicator in response.text for indicator in command_indicators):
-                vuln_info = {
-                    "type": "Command Injection",
-                    "url": url,
-                    "parameter": param,
-                    "method": method,
-                    "payload": payload,
-                    "evidence": "Command output in response",
-                    "severity": "High"
-                }
+        if payload_type == "command_injection" and any(indicator in text for indicator in [
+            "bin/bash", "www/html", "permission denied", "cannot access"
+        ]):
+            return {
+                "type": "Command Injection",
+                "url": url,
+                "parameter": param_name,
+                "method": method,
+                "payload": payload,
+                "evidence": "Command output in response",
+                "severity": "High"
+            }
         
-        return vuln_info
+        return None
     
-    def fuzz_endpoint(self, endpoint, method="GET"):
-        """Fuzz a single endpoint with all payloads"""
-        self.logger.info(f"Fuzzing {method} {endpoint}")
+    def fuzz_endpoint(self, endpoint):
+        """Fuzz a single endpoint"""
+        logger.info(f"Fuzzing endpoint: {endpoint}")
+        findings = []
         
-        results = []
-        payloads = self.load_payloads()
-        
-        # Parse URL to identify parameters
+        # Parse URL to get parameters
         parsed_url = urlparse(endpoint)
+        if not parsed_url.query:
+            return findings
+        
         query_params = parse_qs(parsed_url.query)
         
-        # Fuzz each parameter
-        for param in query_params.keys():
-            param_results = self.fuzz_parameter(endpoint, param, payloads, method)
-            results.extend(param_results)
+        # Test each parameter with each payload type
+        for param_name in query_params.keys():
+            for payload_type, payload_list in self.payloads.items():
+                for payload in payload_list:
+                    try:
+                        vuln_info = self.test_parameter(endpoint, param_name, query_params[param_name][0], payload, payload_type)
+                        if vuln_info:
+                            findings.append(vuln_info)
+                            logger.warning(f"Vulnerability found: {vuln_info['type']} at {endpoint}")
+                    except:
+                        pass
         
-        # Also test for IDOR if endpoint has numeric IDs in path
-        if any(str(i) in endpoint for i in range(10)):
-            for payload in payloads.get("idor", []):
+        return findings
+    
+    def fuzz_endpoints(self, endpoints, max_threads=10):
+        """Fuzz multiple endpoints with threading"""
+        logger.info(f"Fuzzing {len(endpoints)} endpoints")
+        all_findings = []
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+            future_to_endpoint = {
+                executor.submit(self.fuzz_endpoint, endpoint): endpoint for endpoint in endpoints
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_endpoint):
+                endpoint = future_to_endpoint[future]
                 try:
-                    # Replace potential ID values in path
-                    fuzzed_url = re.sub(r'/\d+/', f'/{payload}/', endpoint)
-                    fuzzed_url = re.sub(r'/\d+$', f'/{payload}', fuzzed_url)
-                    
-                    response = self.http_client.request(method, fuzzed_url)
-                    
-                    # If we get a successful response for unauthorized resource
-                    if response.status_code in [200, 201]:
-                        vuln_info = {
-                            "type": "IDOR",
-                            "url": fuzzed_url,
-                            "parameter": "path",
-                            "method": method,
-                            "payload": payload,
-                            "evidence": f"Access to resource {payload} returned {response.status_code}",
-                            "severity": "Medium"
-                        }
-                        results.append(vuln_info)
-                        
+                    findings = future.result()
+                    all_findings.extend(findings)
                 except Exception as e:
-                    self.logger.error(f"Error testing IDOR on {endpoint}: {str(e)}")
+                    logger.error(f"Error fuzzing {endpoint}: {str(e)}")
         
-        return results
+        logger.info(f"Fuzzing completed. Found {len(all_findings)} vulnerabilities")
+        return all_findings

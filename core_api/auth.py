@@ -1,89 +1,39 @@
-import json
-import jwt
-import time
-from base64 import b64decode
-from ..utils.http_client import HTTPClient
-from ..utils.logger import Logger
+"""
+Authentication Tester - Tests authentication mechanisms
+"""
+
+import re
+import base64
+from urllib.parse import urljoin
+from utils.http_client import HTTPClient
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 class AuthTester:
     def __init__(self):
-        self.logger = Logger(__name__)
         self.http_client = HTTPClient()
-    
-    def test_jwt(self, token):
-        """Test JWT tokens for common vulnerabilities"""
-        issues = []
-        
-        try:
-            # Decode without verification to inspect header and payload
-            header = jwt.get_unverified_header(token)
-            payload = jwt.decode(token, options={"verify_signature": False})
-            
-            self.logger.info(f"JWT Header: {json.dumps(header, indent=2)}")
-            self.logger.info(f"JWT Payload: {json.dumps(payload, indent=2)}")
-            
-            # Check for none algorithm vulnerability
-            if header.get('alg') == 'none':
-                issues.append({
-                    "type": "JWT Algorithm None",
-                    "severity": "High",
-                    "description": "JWT uses 'none' algorithm which can be exploited"
-                })
-            
-            # Check for weak secret key
-            weak_secrets = ["secret", "password", "123456", "qwerty", "admin"]
-            for secret in weak_secrets:
-                try:
-                    jwt.decode(token, secret, algorithms=[header.get('alg', 'HS256')])
-                    issues.append({
-                        "type": "JWT Weak Secret",
-                        "severity": "High",
-                        "description": f"JWT can be decoded with weak secret: {secret}"
-                    })
-                    break
-                except jwt.InvalidSignatureError:
-                    continue
-            
-            # Check if token is expired
-            if 'exp' in payload and payload['exp'] < time.time():
-                issues.append({
-                    "type": "JWT Expired",
-                    "severity": "Low",
-                    "description": "JWT token is expired"
-                })
-            
-            # Check for sensitive data in payload
-            sensitive_keys = ['password', 'secret', 'key', 'token', 'credit', 'ssn']
-            for key in payload:
-                if any(sensitive in key.lower() for sensitive in sensitive_keys):
-                    issues.append({
-                        "type": "JWT Sensitive Data",
-                        "severity": "Medium",
-                        "description": f"Sensitive data found in JWT payload: {key}"
-                    })
-        
-        except Exception as e:
-            self.logger.error(f"Error analyzing JWT: {str(e)}")
-            issues.append({
-                "type": "JWT Invalid",
-                "severity": "Low",
-                "description": f"JWT token appears to be invalid: {str(e)}"
-            })
-        
-        return issues
+        self.findings = []
     
     def test_basic_auth(self, url):
-        """Test for basic authentication vulnerabilities"""
-        issues = []
+        """Test Basic Authentication vulnerabilities"""
+        findings = []
         
         # Test with empty credentials
-        response = self.http_client.get(url, auth=('', ''))
-        if response.status_code == 200:
-            issues.append({
-                "type": "Basic Auth Bypass",
-                "severity": "High",
-                "description": "Empty credentials accepted for basic authentication"
-            })
+        try:
+            response = self.http_client.get(url, auth=('', ''))
+            if response.status_code == 200:
+                findings.append({
+                    "type": "Basic Auth Bypass",
+                    "url": url,
+                    "method": "GET",
+                    "params": {"username": "", "password": ""},
+                    "evidence": "Empty credentials accepted",
+                    "severity": "High"
+                })
+                logger.warning(f"Basic Auth bypass at {url}")
+        except:
+            pass
         
         # Test with common credentials
         common_creds = [
@@ -92,67 +42,135 @@ class AuthTester:
         ]
         
         for username, password in common_creds:
-            response = self.http_client.get(url, auth=(username, password))
-            if response.status_code == 200:
-                issues.append({
-                    "type": "Basic Auth Weak Credentials",
-                    "severity": "High",
-                    "description": f"Accepted credentials: {username}:{password}"
-                })
-                break
+            try:
+                response = self.http_client.get(url, auth=(username, password))
+                if response.status_code == 200:
+                    findings.append({
+                        "type": "Weak Basic Auth Credentials",
+                        "url": url,
+                        "method": "GET",
+                        "params": {"username": username, "password": password},
+                        "evidence": f"Accepted credentials: {username}:{password}",
+                        "severity": "High"
+                    })
+                    logger.warning(f"Weak Basic Auth credentials at {url}: {username}:{password}")
+                    break
+            except:
+                pass
         
-        return issues
+        return findings
     
-    def test_api_key(self, url, key_param="api_key"):
+    def test_jwt(self, token):
+        """Test JWT tokens for vulnerabilities"""
+        findings = []
+        
+        try:
+            parts = token.split('.')
+            if len(parts) != 3:
+                return findings
+            
+            # Decode header without verification
+            header = base64.urlsafe_b64decode(parts[0] + '==').decode()
+            
+            # Check for none algorithm
+            if '"alg":"none"' in header or "'alg':'none'" in header:
+                findings.append({
+                    "type": "JWT Algorithm None",
+                    "url": "JWT Token",
+                    "method": "N/A",
+                    "params": {"token": token[:50] + "..."},
+                    "evidence": "JWT uses 'none' algorithm",
+                    "severity": "High"
+                })
+                logger.warning("JWT with 'none' algorithm found")
+        
+        except:
+            pass
+        
+        return findings
+    
+    def test_api_key(self, url):
         """Test API key authentication"""
-        issues = []
+        findings = []
         
         # Test with empty API key
-        response = self.http_client.get(f"{url}?{key_param}=")
-        if response.status_code == 200:
-            issues.append({
-                "type": "API Key Bypass",
-                "severity": "High",
-                "description": "Empty API key was accepted"
-            })
-        
-        # Test with common API key values
-        common_keys = ["test", "123456", "api", "key", "secret", "demo"]
-        for key in common_keys:
-            response = self.http_client.get(f"{url}?{key_param}={key}")
+        try:
+            response = self.http_client.get(f"{url}?api_key=")
             if response.status_code == 200:
-                issues.append({
-                    "type": "API Key Weak Value",
-                    "severity": "Medium",
-                    "description": f"Common API key value accepted: {key}"
+                findings.append({
+                    "type": "API Key Bypass",
+                    "url": url,
+                    "method": "GET",
+                    "params": {"api_key": ""},
+                    "evidence": "Empty API key accepted",
+                    "severity": "High"
                 })
-                break
+                logger.warning(f"API Key bypass at {url}")
+        except:
+            pass
         
-        return issues
+        return findings
     
-    def test_cors(self, url):
-        """Test for CORS misconfigurations"""
-        issues = []
-        
-        # Test with Origin header
-        origins = [
-            "https://evil.com",
-            "http://localhost",
-            "null",
-            "https://" + "a" * 100 + ".com"
+    def test_login_endpoints(self, base_url):
+        """Test login endpoints for vulnerabilities"""
+        findings = []
+        login_endpoints = [
+            "/api/login", "/login", "/auth", "/api/auth", 
+            "/oauth/token", "/signin", "/api/signin"
         ]
         
-        for origin in origins:
-            response = self.http_client.get(url, headers={'Origin': origin})
-            
-            # Check if ACAO header is present and reflects the origin
-            acao = response.headers.get('Access-Control-Allow-Origin')
-            if acao:
-                if acao == origin or acao == '*':
-                    issues.append({
-                        "type": "CORS Misconfiguration",
-                        "severity": "Medium" if acao == '*' else "Low",
-                        "description": f"Potential CORS issue with Origin: {origin}, ACAO: {acao}"
-                    })
+        common_logins = [
+            {"username": "admin", "password": "admin"},
+            {"username": "admin", "password": "password"},
+            {"username": "test", "password": "test"},
+            {"username": "user", "password": "user"},
+            {"email": "admin@example.com", "password": "admin"}
+        ]
         
-        return issues
+        for endpoint in login_endpoints:
+            url = urljoin(base_url, endpoint)
+            
+            for credentials in common_logins:
+                try:
+                    response = self.http_client.post(url, json=credentials)
+                    if response.status_code == 200 and ("token" in response.text or "success" in response.text.lower()):
+                        findings.append({
+                            "type": "Weak Login Credentials",
+                            "url": url,
+                            "method": "POST",
+                            "params": credentials,
+                            "evidence": f"Accepted weak credentials: {credentials}",
+                            "severity": "High"
+                        })
+                        logger.warning(f"Weak credentials accepted at {url}: {credentials}")
+                        break
+                except:
+                    pass
+        
+        return findings
+    
+    def test_all(self, base_url, endpoints):
+        """Run all authentication tests"""
+        logger.info("Running authentication tests")
+        findings = []
+        
+        # Test login endpoints
+        findings.extend(self.test_login_endpoints(base_url))
+        
+        # Test each endpoint for auth vulnerabilities
+        for endpoint in endpoints:
+            findings.extend(self.test_basic_auth(endpoint))
+            findings.extend(self.test_api_key(endpoint))
+            
+            # Check for JWT tokens in responses
+            try:
+                response = self.http_client.get(endpoint)
+                jwt_pattern = r'eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'
+                tokens = re.findall(jwt_pattern, response.text)
+                for token in tokens:
+                    findings.extend(self.test_jwt(token))
+            except:
+                pass
+        
+        logger.info(f"Authentication testing completed. Found {len(findings)} issues")
+        return findings

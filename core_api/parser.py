@@ -1,7 +1,8 @@
 import json
 import re
 from urllib.parse import urlparse, parse_qs
-from ..utils.logger import Logger
+from utils.logger import Logger
+
 
 class APIParser:
     def __init__(self):
@@ -91,3 +92,8 @@ class APIParser:
                 endpoints.add(urljoin(base_url, match))
         
         return endpoints
+    
+
+class APIResponseParser:
+    def __init__(self):
+        pass
