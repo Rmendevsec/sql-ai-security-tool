@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Advanced API Security Tester
-A comprehensive tool to test APIs for security vulnerabilities with advanced techniques
-"""
-
 import requests
 import json
 import sys
@@ -14,8 +8,6 @@ import string
 import base64
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse, quote, unquote
-
-# Color codes for output
 class Colors:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
@@ -39,8 +31,7 @@ class AdvancedAPITester:
         self.jwt_tokens = []
         self.api_keys = []
         self.sensitive_data = []
-        
-        # Enhanced payload database
+    
         self.payloads = {
             "sql_injection": [
                 "' OR '1'='1", "' UNION SELECT NULL--", "admin'--", "' OR 1=1--", 
@@ -152,7 +143,7 @@ class AdvancedAPITester:
         self.print_status(f"Testing {method} {url}", "info")
         
         try:
-            # Test HTTP methods
+
             if method.upper() == "GET":
                 response = self.session.get(url, timeout=10, params=params, headers=headers)
             elif method.upper() == "POST":
@@ -170,13 +161,10 @@ class AdvancedAPITester:
             else:
                 return
             
-            # Check for common vulnerabilities based on response
             self.check_vulnerabilities(response, url, method, params, data, headers)
             
-            # Check for JWT tokens in response
             self.extract_jwt_tokens(response)
             
-            # Check for API keys and sensitive data
             self.extract_sensitive_data(response, url)
             
             return response
@@ -186,8 +174,7 @@ class AdvancedAPITester:
             return None
     
     def extract_jwt_tokens(self, response):
-        """Extract JWT tokens from response"""
-        # Check for JWT in response body
+   
         jwt_pattern = r'eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'
         matches = re.findall(jwt_pattern, response.text)
         for token in matches:
@@ -195,7 +182,6 @@ class AdvancedAPITester:
                 self.jwt_tokens.append(token)
                 self.print_status(f"Found JWT token: {token[:50]}...", "success")
         
-        # Check for JWT in headers
         for header, value in response.headers.items():
             if 'auth' in header.lower() or 'token' in header.lower() or 'jwt' in header.lower():
                 matches = re.findall(jwt_pattern, value)
