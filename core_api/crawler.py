@@ -236,7 +236,6 @@ class AdvancedAPITester:
         self.print_status("Testing JWT tokens for vulnerabilities", "advanced")
         
         for token in self.jwt_tokens:
-            # Test for None algorithm vulnerability
             try:
                 parts = token.split('.')
                 if len(parts) != 3:
