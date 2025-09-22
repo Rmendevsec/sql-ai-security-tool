@@ -221,7 +221,6 @@ class AdvancedAPITester:
                     })
                     self.print_status(f"Found {data_type}: {match}", "data")
         
-        # Check headers for sensitive information
         for header, value in response.headers.items():
             if any(keyword in header.lower() for keyword in ['key', 'token', 'secret', 'password', 'credential']):
                 if value and len(value) > 10:  # Basic length check to avoid false positives
