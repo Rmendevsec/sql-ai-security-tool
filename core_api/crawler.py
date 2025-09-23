@@ -5,7 +5,6 @@ import re
 import base64
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin
-
 class Colors:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
