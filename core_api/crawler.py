@@ -1,13 +1,11 @@
 import requests
 import json
 import sys
-import time
 import re
-import random
-import string
 import base64
 import xml.etree.ElementTree as ET
-from urllib.parse import urljoin, urlparse, quote, unquote
+from urllib.parse import urljoin
+
 class Colors:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
@@ -143,7 +141,6 @@ class AdvancedAPITester:
         self.print_status(f"Testing {method} {url}", "info")
         
         try:
-
             if method.upper() == "GET":
                 response = self.session.get(url, timeout=10, params=params, headers=headers)
             elif method.upper() == "POST":
@@ -162,9 +159,7 @@ class AdvancedAPITester:
                 return
             
             self.check_vulnerabilities(response, url, method, params, data, headers)
-            
             self.extract_jwt_tokens(response)
-            
             self.extract_sensitive_data(response, url)
             
             return response
@@ -174,7 +169,7 @@ class AdvancedAPITester:
             return None
     
     def extract_jwt_tokens(self, response):
-   
+        """Extract JWT tokens from response"""
         jwt_pattern = r'eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'
         matches = re.findall(jwt_pattern, response.text)
         for token in matches:
@@ -192,7 +187,6 @@ class AdvancedAPITester:
     
     def extract_sensitive_data(self, response, url):
         """Extract API keys and sensitive data from response"""
-        # API key patterns
         api_key_patterns = {
             'AWS_ACCESS_KEY': r'AKIA[0-9A-Z]{16}',
             'AWS_SECRET_KEY': r'[0-9a-zA-Z/+]{40}',
@@ -223,7 +217,7 @@ class AdvancedAPITester:
         
         for header, value in response.headers.items():
             if any(keyword in header.lower() for keyword in ['key', 'token', 'secret', 'password', 'credential']):
-                if value and len(value) > 10:  # Basic length check to avoid false positives
+                if value and len(value) > 10:
                     self.sensitive_data.append({
                         'type': f'Header_{header}',
                         'value': value,
@@ -255,7 +249,6 @@ class AdvancedAPITester:
             except:
                 pass
             
-            # Test for weak secret key
             weak_secrets = ["secret", "password", "123456", "qwerty", "admin", "test", "key", "changeme"]
             for secret in weak_secrets:
                 try:
@@ -279,7 +272,6 @@ class AdvancedAPITester:
         text = response.text.lower()
         resp_headers = str(response.headers).lower()
         
-        # SQL Injection detection
         sql_errors = [
             "sql syntax", "mysql_fetch", "ora-01756", "postgresql", 
             "microsoft ole db provider", "syntax error", "mysql_num_rows",
@@ -298,7 +290,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"SQL Injection vulnerability found at {url}", "vuln")
         
-        # XSS detection
         if response.status_code < 500 and any(payload in response.text for payload in self.payloads["xss"]):
             self.vulnerabilities.append({
                 "type": "XSS",
@@ -310,7 +301,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"XSS vulnerability found at {url}", "vuln")
         
-        # Path Traversal detection
         if any(indicator in text for indicator in ["root:", "daemon:", "/bin/bash", "etc/passwd", "boot.ini", "windows/system32"]):
             self.vulnerabilities.append({
                 "type": "Path Traversal",
@@ -322,7 +312,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"Path Traversal vulnerability found at {url}", "vuln")
         
-        # Command Injection detection
         if any(indicator in text for indicator in ["bin/bash", "www/html", "permission denied", "cannot access", "command not found", "volume in drive"]):
             self.vulnerabilities.append({
                 "type": "Command Injection",
@@ -334,7 +323,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"Command Injection vulnerability found at {url}", "vuln")
         
-        # IDOR detection
         if response.status_code == 200 and any(indicator in url for indicator in ["user", "account", "profile", "id=", "uid="]):
             if any(indicator in text for indicator in ["email", "password", "admin", "user", "private", "secret"]):
                 self.vulnerabilities.append({
@@ -347,7 +335,6 @@ class AdvancedAPITester:
                 })
                 self.print_status(f"IDOR vulnerability found at {url}", "vuln")
         
-        # SSTI detection
         if any(indicator in text for indicator in ["49", "777", "1337"]) and any(payload in (params or {} or data or {}) for payload in self.payloads["ssti"]):
             self.vulnerabilities.append({
                 "type": "Server-Side Template Injection",
@@ -359,7 +346,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"SSTI vulnerability found at {url}", "vuln")
         
-        # XXE detection
         if any(indicator in text for indicator in ["root:", "daemon:", "/etc/passwd", "boot.ini"]) and any("xml" in param.lower() for param in (params or {} or data or {})):
             self.vulnerabilities.append({
                 "type": "XXE Injection",
@@ -371,7 +357,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"XXE vulnerability found at {url}", "vuln")
         
-        # NoSQL Injection detection
         if any(indicator in text for indicator in ["mongodb", "mongoose", "nosql", "mongodb error"]) and any(payload in str(params or data) for payload in self.payloads["nosql_injection"]):
             self.vulnerabilities.append({
                 "type": "NoSQL Injection",
@@ -383,7 +368,6 @@ class AdvancedAPITester:
             })
             self.print_status(f"NoSQL Injection vulnerability found at {url}", "vuln")
         
-        # Open Redirect detection
         if response.status_code in [301, 302, 307, 308] and "location" in response.headers:
             location = response.headers["location"]
             if any(redirect in location for redirect in ["evil.com", "attacker.com", "example.com"]):
@@ -397,7 +381,6 @@ class AdvancedAPITester:
                 })
                 self.print_status(f"Open Redirect vulnerability found at {url}", "vuln")
         
-        # Security header detection
         security_headers = ["x-frame-options", "x-content-type-options", 
                            "x-xss-protection", "strict-transport-security",
                            "content-security-policy"]
@@ -443,11 +426,10 @@ class AdvancedAPITester:
             test_url = urljoin(base_url, endpoint)
             try:
                 response = self.session.get(test_url, timeout=5)
-                if response.status_code < 400:  # Not 4xx or 5xx
+                if response.status_code < 400:
                     discovered.append(test_url)
                     self.print_status(f"Found endpoint: {test_url}", "success")
                     
-                    # Check for directory listing
                     if "index of" in response.text.lower():
                         self.vulnerabilities.append({
                             "type": "Directory Listing",
@@ -461,7 +443,6 @@ class AdvancedAPITester:
             except:
                 pass
         
-        # Try common file extensions
         extensions = [".json", ".xml", ".yaml", ".yml", ".php", ".asp", ".aspx", ".jsp", ".txt", ".bak", ".old", ".backup"]
         for ext in extensions:
             test_url = urljoin(base_url, f"/api{ext}")
@@ -473,13 +454,11 @@ class AdvancedAPITester:
             except:
                 pass
         
-        # Try common API patterns
         api_patterns = [
             "/api/{id}", "/users/{id}", "/products/{id}", "/v1/{resource}",
             "/v2/{resource}", "/{version}/users", "/{version}/products"
         ]
         
-        # Test with common IDs
         test_ids = ["1", "123", "test", "admin", "user", "guest"]
         for pattern in api_patterns:
             for test_id in test_ids:
@@ -506,7 +485,6 @@ class AdvancedAPITester:
         for endpoint in auth_endpoints:
             test_url = urljoin(base_url, endpoint)
             
-            # Test with common credentials
             common_logins = [
                 {"username": "admin", "password": "admin"},
                 {"username": "admin", "password": "password"},
@@ -538,7 +516,6 @@ class AdvancedAPITester:
                 except:
                     pass
             
-            # Test for username enumeration
             test_usernames = ["admin", "administrator", "root", "test", "user", "guest"]
             for username in test_usernames:
                 try:
@@ -556,7 +533,6 @@ class AdvancedAPITester:
                 except:
                     pass
             
-            # Test for account lockout
             for i in range(10):
                 try:
                     response = self.session.post(test_url, json={"username": "admin", "password": f"wrong_password_{i}"}, timeout=5)
@@ -618,15 +594,13 @@ class AdvancedAPITester:
                         self.print_status(f"CORS misconfiguration at {endpoint} with origin {origin}", "vuln")
                 except:
                     pass
-    
+
     def test_ssrf(self, base_url):
         """Test for Server-Side Request Forgery vulnerabilities"""
         self.print_status("Testing for SSRF vulnerabilities", "advanced")
         
-        # Look for parameters that might be vulnerable to SSRF
         ssrf_params = ["url", "proxy", "image", "path", "file", "load", "uri", "request", "host"]
         
-        # Test endpoints that might be vulnerable
         test_endpoints = [
             "/api/export", "/api/import", "/api/fetch", "/api/proxy", 
             "/api/thumbnail", "/api/image", "/api/convert", "/api/load"
@@ -643,7 +617,6 @@ class AdvancedAPITester:
                         else:
                             response = self.session.get(test_url, params={param: payload}, timeout=10)
                         
-                        # Check for signs of SSRF
                         if any(indicator in response.text for indicator in ["ec2", "metadata", "localhost", "127.0.0.1", "internal"]):
                             self.vulnerabilities.append({
                                 "type": "SSRF",
@@ -661,7 +634,6 @@ class AdvancedAPITester:
         """Test for XXE vulnerabilities"""
         self.print_status("Testing for XXE vulnerabilities", "advanced")
         
-        # Look for endpoints that accept XML
         xml_endpoints = [
             "/api/xml", "/api/soap", "/api/export", "/api/import", 
             "/api/upload", "/api/convert", "/xml", "/soap"
@@ -675,7 +647,6 @@ class AdvancedAPITester:
                     headers = {'Content-Type': 'application/xml'}
                     response = self.session.post(test_url, data=payload, headers=headers, timeout=10)
                     
-                    # Check for signs of XXE
                     if any(indicator in response.text for indicator in ["root:", "daemon:", "/etc/passwd", "boot.ini"]):
                         self.vulnerabilities.append({
                             "type": "XXE",
@@ -693,12 +664,10 @@ class AdvancedAPITester:
         """Test for Server-Side Template Injection vulnerabilities"""
         self.print_status("Testing for SSTI vulnerabilities", "advanced")
         
-        # Test endpoints that might be vulnerable to SSTI
         for endpoint in self.discovered_endpoints:
             if any(param in endpoint for param in ["name", "template", "view", "page"]):
                 for payload in self.payloads["ssti"]:
                     try:
-                        # Test in GET parameters
                         if '?' in endpoint:
                             base_url, query_string = endpoint.split('?', 1)
                             params = {}
@@ -710,7 +679,6 @@ class AdvancedAPITester:
                             
                             response = self.session.get(base_url, params=params, timeout=10)
                             
-                            # Check for signs of SSTI
                             if any(indicator in response.text for indicator in ["49", "777", "1337"]):
                                 self.vulnerabilities.append({
                                     "type": "SSTI",
@@ -728,7 +696,6 @@ class AdvancedAPITester:
         """Test for NoSQL injection vulnerabilities"""
         self.print_status("Testing for NoSQL injection vulnerabilities", "advanced")
         
-        # Look for endpoints that might use NoSQL databases
         nosql_endpoints = [
             "/api/users", "/api/login", "/api/auth", "/api/products",
             "/users", "/login", "/auth", "/products"
@@ -739,10 +706,8 @@ class AdvancedAPITester:
             
             for payload in self.payloads["nosql_injection"]:
                 try:
-                    # Test with JSON payload
                     response = self.session.post(test_url, json=json.loads(payload), timeout=10)
                     
-                    # Check for signs of NoSQL injection
                     if response.status_code == 200 and ("admin" in response.text or "password" in response.text):
                         self.vulnerabilities.append({
                             "type": "NoSQL Injection",
@@ -760,7 +725,6 @@ class AdvancedAPITester:
         """Test for GraphQL injection vulnerabilities"""
         self.print_status("Testing for GraphQL injection vulnerabilities", "advanced")
         
-        # Test GraphQL endpoints
         graphql_endpoints = [
             "/graphql", "/api/graphql", "/v1/graphql", "/v2/graphql",
             "/gql", "/api/gql", "/query", "/api/query"
@@ -773,7 +737,6 @@ class AdvancedAPITester:
                 try:
                     response = self.session.post(test_url, json={"query": payload}, timeout=10)
                     
-                    # Check for signs of GraphQL injection
                     if response.status_code == 200 and ("__schema" in response.text or "users" in response.text):
                         self.vulnerabilities.append({
                             "type": "GraphQL Injection",
@@ -791,7 +754,6 @@ class AdvancedAPITester:
         """Test for Prototype Pollution vulnerabilities"""
         self.print_status("Testing for Prototype Pollution vulnerabilities", "advanced")
         
-        # Test endpoints that accept JSON
         json_endpoints = [
             "/api/users", "/api/products", "/api/config", "/api/settings",
             "/users", "/products", "/config", "/settings"
@@ -804,7 +766,6 @@ class AdvancedAPITester:
                 try:
                     response = self.session.post(test_url, json=json.loads(payload), timeout=10)
                     
-                    # Check for signs of prototype pollution
                     if response.status_code == 200 and ("isAdmin" in response.text or "toString" in response.text):
                         self.vulnerabilities.append({
                             "type": "Prototype Pollution",
@@ -822,7 +783,6 @@ class AdvancedAPITester:
         """Fuzz parameters with advanced payloads"""
         self.print_status(f"Fuzzing parameters for {url}", "info")
         
-        # Only test GET parameters for simplicity
         if '?' not in url:
             return
             
@@ -834,7 +794,6 @@ class AdvancedAPITester:
                 key, value = param.split('=', 1)
                 params[key] = value
         
-        # Test each parameter with payloads
         for param_name in params.keys():
             for payload_type, payload_list in self.payloads.items():
                 for payload in payload_list:
@@ -852,7 +811,6 @@ class AdvancedAPITester:
         """Test for rate limiting vulnerabilities"""
         self.print_status("Testing for rate limiting bypass", "advanced")
         
-        # Test endpoints that might be rate limited
         test_endpoints = [
             "/api/login", "/login", "/api/auth", "/auth", 
             "/api/register", "/register", "/api/password/reset"
@@ -861,12 +819,10 @@ class AdvancedAPITester:
         for endpoint in test_endpoints:
             test_url = urljoin(base_url, endpoint)
             
-            # Make multiple rapid requests
             for i in range(20):
                 try:
                     response = self.session.post(test_url, json={"test": "payload"}, timeout=5)
                     
-                    # If we don't get rate limited, there might be a vulnerability
                     if i > 10 and response.status_code != 429 and response.status_code != 403:
                         self.vulnerabilities.append({
                             "type": "Rate Limiting Bypass",
@@ -890,7 +846,6 @@ class AdvancedAPITester:
                 try:
                     response = self.session.request(method, endpoint, timeout=10)
                     
-                    # Check if dangerous methods are enabled
                     if response.status_code < 400:
                         self.vulnerabilities.append({
                             "type": "Dangerous HTTP Method Enabled",
@@ -908,7 +863,6 @@ class AdvancedAPITester:
         """Test for Broken Object Level Authorization vulnerabilities"""
         self.print_status("Testing for BOLA vulnerabilities", "advanced")
         
-        # Test endpoints with ID parameters
         id_endpoints = [
             "/api/users/", "/users/", "/api/products/", "/products/",
             "/api/orders/", "/orders/", "/api/invoices/", "/invoices/"
@@ -922,7 +876,6 @@ class AdvancedAPITester:
                 try:
                     response = self.session.get(test_url, timeout=10)
                     
-                    # Check if we can access other users' data
                     if response.status_code == 200 and any(indicator in response.text for indicator in ["email", "password", "admin", "user"]):
                         self.vulnerabilities.append({
                             "type": "Broken Object Level Authorization",
@@ -940,13 +893,11 @@ class AdvancedAPITester:
         """Test for Mass Assignment vulnerabilities"""
         self.print_status("Testing for Mass Assignment vulnerabilities", "advanced")
         
-        # Test endpoints that might be vulnerable to mass assignment
         mass_assignment_endpoints = [
             "/api/users", "/users", "/api/products", "/products",
             "/api/register", "/register", "/api/profile", "/profile"
         ]
         
-        # Test with common admin parameters
         admin_params = {
             "isAdmin": True,
             "admin": True,
@@ -960,10 +911,8 @@ class AdvancedAPITester:
             test_url = urljoin(base_url, endpoint)
             
             try:
-                # Test with POST request
                 response = self.session.post(test_url, json=admin_params, timeout=10)
                 
-                # Check if we successfully set admin parameters
                 if response.status_code == 200 and any(indicator in response.text for indicator in ["admin", "true", "superuser"]):
                     self.vulnerabilities.append({
                         "type": "Mass Assignment",
@@ -981,65 +930,35 @@ class AdvancedAPITester:
         """Main scanning function"""
         self.print_status(f"Starting advanced scan of {target_url}", "info")
         
-        # Discover endpoints
         endpoints = self.find_endpoints(target_url)
-        endpoints.append(target_url)  # Also test the base URL
+        endpoints.append(target_url)
         self.discovered_endpoints = endpoints
         
-        # Test authentication
         self.test_auth(target_url)
-        
-        # Test CORS
         self.test_cors(target_url)
-        
-        # Test SSRF
         self.test_ssrf(target_url)
-        
-        # Test XXE
         self.test_xxe(target_url)
-        
-        # Test SSTI
         self.test_ssti(target_url)
-        
-        # Test NoSQL Injection
         self.test_nosql_injection(target_url)
-        
-        # Test GraphQL Injection
         self.test_graphql_injection(target_url)
-        
-        # Test Prototype Pollution
         self.test_prototype_pollution(target_url)
-        
-        # Test rate limiting
         self.test_rate_limiting(target_url)
-        
-        # Test HTTP methods
         self.test_http_methods(target_url)
-        
-        # Test BOLA
         self.test_broken_object_level_auth(target_url)
-        
-        # Test Mass Assignment
         self.test_mass_assignment(target_url)
         
-        # Test each endpoint with different HTTP methods
         for endpoint in endpoints:
             for method in ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]:
                 self.test_endpoint(endpoint, method)
                 
-                # Test with parameters for POST/PUT/PATCH
                 if method in ["POST", "PUT", "PATCH"]:
                     test_data = {"test": "payload", "id": 1, "name": "test", "email": "test@example.com"}
                     self.test_endpoint(endpoint, method, data=test_data)
             
-            # Fuzz parameters for GET endpoints
             if '?' in endpoint:
                 self.fuzz_parameters(endpoint)
         
-        # Test JWT tokens for vulnerabilities
         self.test_jwt_vulnerabilities()
-        
-        # Generate report
         self.generate_report()
     
     def generate_report(self):
@@ -1052,7 +971,6 @@ class AdvancedAPITester:
             self.print_status("No vulnerabilities found!", "success")
             return
         
-        # Count vulnerabilities by severity
         high_count = sum(1 for v in self.vulnerabilities if v['severity'] == 'High')
         medium_count = sum(1 for v in self.vulnerabilities if v['severity'] == 'Medium')
         low_count = sum(1 for v in self.vulnerabilities if v['severity'] == 'Low')
@@ -1063,7 +981,6 @@ class AdvancedAPITester:
         print(f"{Colors.BLUE}Low: {low_count}{Colors.END}")
         print(f"{Colors.BOLD}Total: {len(self.vulnerabilities)}{Colors.END}")
         
-        # Group vulnerabilities by type
         vuln_by_type = {}
         for vuln in self.vulnerabilities:
             if vuln['type'] not in vuln_by_type:
@@ -1077,7 +994,6 @@ class AdvancedAPITester:
         
         self.print_status(f"\nFound {len(self.vulnerabilities)} vulnerabilities:", "warning")
         
-        # Print detailed vulnerabilities
         for i, vuln in enumerate(self.vulnerabilities, 1):
             color = Colors.RED if vuln['severity'] == 'High' else Colors.YELLOW if vuln['severity'] == 'Medium' else Colors.BLUE
             print(f"\n{color}{i}. {vuln['type']} ({vuln['severity']}){Colors.END}")
@@ -1087,7 +1003,6 @@ class AdvancedAPITester:
                 print(f"   Parameters: {vuln['params']}")
             print(f"   Evidence: {vuln['evidence']}")
         
-        # Print sensitive data findings
         if self.sensitive_data:
             print(f"\n{Colors.CYAN}{'='*80}{Colors.END}")
             print(f"{Colors.CYAN}{Colors.BOLD}SENSITIVE DATA FINDINGS{Colors.END}")
