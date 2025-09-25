@@ -3,8 +3,9 @@ import json
 import sys
 import re
 import base64
-import xml.etree.ElementTree as ET
 from urllib.parse import urljoin
+
+
 class Colors:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
@@ -14,7 +15,8 @@ class Colors:
     CYAN = '\033[96m'
     BOLD = '\033[1m'
     END = '\033[0m'
-
+    
+    
 class AdvancedAPITester:
     def __init__(self):
         self.session = requests.Session()
@@ -32,7 +34,6 @@ class AdvancedAPITester:
         self.payloads = {
             "sql_injection": [
                 "' OR '1'='1", "' UNION SELECT NULL--", "admin'--", "' OR 1=1--", 
-                "1; DROP TABLE users", "1' WAITFOR DELAY '0:0:5'--", 
                 "1 AND (SELECT * FROM (SELECT(SLEEP(5)))a)--",
                 "1'; EXEC xp_cmdshell('dir')--", "1' OR EXISTS(SELECT * FROM users WHERE username='admin')--",
                 "1' OR (SELECT COUNT(*) FROM sysobjects) > 0--", "1' OR (SELECT COUNT(*) FROM information_schema.tables) > 0--"
@@ -115,7 +116,6 @@ class AdvancedAPITester:
         }
     
     def print_status(self, message, status="info"):
-        """Print colored status messages"""
         if status == "info":
             print(f"{Colors.BLUE}[+] {message}{Colors.END}")
         elif status == "success":
@@ -132,7 +132,7 @@ class AdvancedAPITester:
             print(f"{Colors.CYAN}[$] {message}{Colors.END}")
     
     def test_endpoint(self, url, method="GET", params=None, headers=None, data=None):
-        """Test a single endpoint for vulnerabilities"""
+
         if url in self.tested_endpoints:
             return
         self.tested_endpoints.add(url)
@@ -185,7 +185,6 @@ class AdvancedAPITester:
                         self.print_status(f"Found JWT token in {header}: {token[:50]}...", "success")
     
     def extract_sensitive_data(self, response, url):
-        """Extract API keys and sensitive data from response"""
         api_key_patterns = {
             'AWS_ACCESS_KEY': r'AKIA[0-9A-Z]{16}',
             'AWS_SECRET_KEY': r'[0-9a-zA-Z/+]{40}',
@@ -225,7 +224,6 @@ class AdvancedAPITester:
                     self.print_status(f"Found sensitive header {header}: {value[:50]}...", "data")
     
     def test_jwt_vulnerabilities(self):
-        """Test extracted JWT tokens for vulnerabilities"""
         self.print_status("Testing JWT tokens for vulnerabilities", "advanced")
         
         for token in self.jwt_tokens:
@@ -400,7 +398,6 @@ class AdvancedAPITester:
             })
     
     def find_endpoints(self, base_url):
-        """Try to discover API endpoints with advanced techniques"""
         self.print_status(f"Discovering endpoints for {base_url}", "info")
         
         common_endpoints = [
@@ -473,7 +470,6 @@ class AdvancedAPITester:
         return discovered
     
     def test_auth(self, base_url):
-        """Test authentication endpoints with advanced techniques"""
         self.print_status("Testing authentication endpoints", "info")
         
         auth_endpoints = [
@@ -550,7 +546,6 @@ class AdvancedAPITester:
                     pass
     
     def test_cors(self, base_url):
-        """Test for CORS misconfigurations with advanced techniques"""
         self.print_status("Testing CORS configurations", "info")
         
         test_endpoints = self.find_endpoints(base_url)
@@ -595,7 +590,6 @@ class AdvancedAPITester:
                     pass
 
     def test_ssrf(self, base_url):
-        """Test for Server-Side Request Forgery vulnerabilities"""
         self.print_status("Testing for SSRF vulnerabilities", "advanced")
         
         ssrf_params = ["url", "proxy", "image", "path", "file", "load", "uri", "request", "host"]
@@ -630,7 +624,6 @@ class AdvancedAPITester:
                         pass
     
     def test_xxe(self, base_url):
-        """Test for XXE vulnerabilities"""
         self.print_status("Testing for XXE vulnerabilities", "advanced")
         
         xml_endpoints = [
@@ -660,7 +653,6 @@ class AdvancedAPITester:
                     pass
     
     def test_ssti(self, base_url):
-        """Test for Server-Side Template Injection vulnerabilities"""
         self.print_status("Testing for SSTI vulnerabilities", "advanced")
         
         for endpoint in self.discovered_endpoints:
@@ -692,7 +684,6 @@ class AdvancedAPITester:
                         pass
     
     def test_nosql_injection(self, base_url):
-        """Test for NoSQL injection vulnerabilities"""
         self.print_status("Testing for NoSQL injection vulnerabilities", "advanced")
         
         nosql_endpoints = [
@@ -721,7 +712,6 @@ class AdvancedAPITester:
                     pass
     
     def test_graphql_injection(self, base_url):
-        """Test for GraphQL injection vulnerabilities"""
         self.print_status("Testing for GraphQL injection vulnerabilities", "advanced")
         
         graphql_endpoints = [
@@ -750,7 +740,6 @@ class AdvancedAPITester:
                     pass
     
     def test_prototype_pollution(self, base_url):
-        """Test for Prototype Pollution vulnerabilities"""
         self.print_status("Testing for Prototype Pollution vulnerabilities", "advanced")
         
         json_endpoints = [
@@ -779,7 +768,6 @@ class AdvancedAPITester:
                     pass
     
     def fuzz_parameters(self, url):
-        """Fuzz parameters with advanced payloads"""
         self.print_status(f"Fuzzing parameters for {url}", "info")
         
         if '?' not in url:
@@ -807,7 +795,6 @@ class AdvancedAPITester:
                         pass
     
     def test_rate_limiting(self, base_url):
-        """Test for rate limiting vulnerabilities"""
         self.print_status("Testing for rate limiting bypass", "advanced")
         
         test_endpoints = [
@@ -837,7 +824,6 @@ class AdvancedAPITester:
                     pass
     
     def test_http_methods(self, base_url):
-        """Test for HTTP method vulnerabilities"""
         self.print_status("Testing HTTP methods", "advanced")
         
         for endpoint in self.discovered_endpoints:
@@ -859,7 +845,6 @@ class AdvancedAPITester:
                     pass
     
     def test_broken_object_level_auth(self, base_url):
-        """Test for Broken Object Level Authorization vulnerabilities"""
         self.print_status("Testing for BOLA vulnerabilities", "advanced")
         
         id_endpoints = [
