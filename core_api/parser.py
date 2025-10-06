@@ -1,99 +1,73 @@
-import json
 import re
-from urllib.parse import urlparse, parse_qs
-from utils.logger import Logger
+import json
+import base64
 
-
-class APIParser:
+class Parser:
     def __init__(self):
-        self.logger = Logger(__name__)
+        self.jwt_tokens = []
+        self.sensitive_data = []
     
-    def parse_swagger(self, content, base_url):
-        """Parse Swagger/OpenAPI documentation"""
-        endpoints = set()
+    def extract_jwt_tokens(self, response):
+        """Extract JWT tokens from response"""
+        jwt_pattern = r'eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'
+        matches = re.findall(jwt_pattern, response.text)
+        for token in matches:
+            if token not in self.jwt_tokens:
+                self.jwt_tokens.append(token)
         
-        try:
-            if isinstance(content, str):
-                spec = json.loads(content)
-            else:
-                spec = content
-            
-            # Check if it's OpenAPI 3.x
-            if 'openapi' in spec and spec['openapi'].startswith('3'):
-                servers = spec.get('servers', [{'url': base_url}])
-                base_path = servers[0]['url'] if servers else base_url
-                
-                for path, methods in spec.get('paths', {}).items():
-                    for method in methods.keys():
-                        if method.upper() in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']:
-                            full_url = urljoin(base_path, path)
-                            endpoints.add((full_url, method.upper()))
-            
-            # Check if it's Swagger 2.0
-            elif 'swagger' in spec and spec['swagger'] == '2.0':
-                base_path = spec.get('basePath', '')
-                host = spec.get('host', urlparse(base_url).netloc)
-                schemes = spec.get('schemes', ['https'])
-                
-                for path, methods in spec.get('paths', {}).items():
-                    for method in methods.keys():
-                        if method.upper() in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']:
-                            full_url = f"{schemes[0]}://{host}{base_path}{path}"
-                            endpoints.add((full_url, method.upper()))
-            
-            return endpoints
-            
-        except Exception as e:
-            self.logger.error(f"Error parsing Swagger/OpenAPI: {str(e)}")
-            return set()
+        for header, value in response.headers.items():
+            if 'auth' in header.lower() or 'token' in header.lower() or 'jwt' in header.lower():
+                matches = re.findall(jwt_pattern, value)
+                for token in matches:
+                    if token not in self.jwt_tokens:
+                        self.jwt_tokens.append(token)
+        
+        return self.jwt_tokens
     
-    def parse_robots_txt(self, content, base_url):
-        """Parse robots.txt for endpoints"""
-        endpoints = set()
+    def extract_sensitive_data(self, response, url):
+        """Extract API keys and sensitive data from response"""
+        api_key_patterns = {
+            'AWS_ACCESS_KEY': r'AKIA[0-9A-Z]{16}',
+            'AWS_SECRET_KEY': r'[0-9a-zA-Z/+]{40}',
+            'Google_API_KEY': r'AIza[0-9A-Za-z\\-_]{35}',
+            'Google_OAUTH': r'ya29\\.[0-9A-Za-z\\-_]+',
+            'Facebook_ACCESS_TOKEN': r'EAACEdEose0cBA[0-9A-Za-z]+',
+            'Twitter_ACCESS_TOKEN': r'[0-9a-zA-Z]{35,44}',
+            'GitHub_ACCESS_TOKEN': r'ghp_[0-9a-zA-Z]{36}',
+            'Slack_ACCESS_TOKEN': r'xox[baprs]-[0-9a-zA-Z]{10,48}',
+            'Stripe_API_KEY': r'sk_live_[0-9a-zA-Z]{24}',
+            'Twilio_API_KEY': r'SK[0-9a-fA-F]{32}',
+            'Password': r'password[=:]\s*[\'"]?([^\'"\s]+)',
+            'Email': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+            'Credit Card': r'\b(?:\d[ -]*?){13,16}\b',
+            'JWT': r'eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'
+        }
         
-        for line in content.split('\n'):
-            if line.startswith('Allow:') or line.startswith('Disallow:'):
-                path = line.split(':', 1)[1].strip()
-                if path and path != '/':
-                    endpoints.add(urljoin(base_url, path))
-        
-        return endpoints
-    
-    def parse_sitemap(self, content, base_url):
-        """Parse sitemap.xml for endpoints"""
-        endpoints = set()
-        
-        # Simple XML parsing for URLs
-        url_pattern = r'<loc>(.*?)</loc>'
-        matches = re.findall(url_pattern, content)
-        
-        for match in matches:
-            endpoints.add(match)
-        
-        return endpoints
-    
-    def find_api_docs(self, html_content, base_url):
-        """Find API documentation links in HTML"""
-        endpoints = set()
-        
-        # Common API documentation patterns
-        patterns = [
-            r'href=[\'"](/swagger[^\'"]*)[\'"]',
-            r'href=[\'"](/api/docs[^\'"]*)[\'"]',
-            r'href=[\'"](/openapi[^\'"]*)[\'"]',
-            r'href=[\'"]([^\'"]*swagger-ui[^\'"]*)[\'"]',
-            r'href=[\'"](/redoc[^\'"]*)[\'"]',
-            r'href=[\'"](/api/v[0-9]/docs[^\'"]*)[\'"]'
-        ]
-        
-        for pattern in patterns:
-            matches = re.findall(pattern, html_content, re.IGNORECASE)
+        for data_type, pattern in api_key_patterns.items():
+            matches = re.findall(pattern, response.text)
             for match in matches:
-                endpoints.add(urljoin(base_url, match))
+                if not any(match in sd['value'] for sd in self.sensitive_data):
+                    self.sensitive_data.append({
+                        'type': data_type,
+                        'value': match,
+                        'url': url
+                    })
         
-        return endpoints
+        for header, value in response.headers.items():
+            if any(keyword in header.lower() for keyword in ['key', 'token', 'secret', 'password', 'credential']):
+                if value and len(value) > 10:
+                    self.sensitive_data.append({
+                        'type': f'Header_{header}',
+                        'value': value,
+                        'url': url
+                    })
+        
+        return self.sensitive_data
     
-
-class APIResponseParser:
-    def __init__(self):
-        pass
+    def get_jwt_tokens(self):
+        """Return extracted JWT tokens"""
+        return self.jwt_tokens
+    
+    def get_sensitive_data(self):
+        """Return extracted sensitive data"""
+        return self.sensitive_data

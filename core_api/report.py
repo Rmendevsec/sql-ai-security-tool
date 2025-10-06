@@ -1,163 +1,74 @@
-"""
-Report Generator - Creates security assessment reports
-"""
-
-import json
-from datetime import datetime
-from utils.logger import setup_logger
-
-logger = setup_logger(__name__)
+from crawler import Colors
 
 class ReportGenerator:
     def __init__(self):
-        self.findings = []
+        pass
     
-    def add_findings(self, findings):
-        """Add findings to the report"""
-        self.findings.extend(findings)
+    def print_status(self, message, status="info"):
+        """Print colored status messages"""
+        if status == "info":
+            print(f"{Colors.BLUE}[+] {message}{Colors.END}")
+        elif status == "success":
+            print(f"{Colors.GREEN}[+] {message}{Colors.END}")
+        elif status == "warning":
+            print(f"{Colors.YELLOW}[!] {message}{Colors.END}")
+        elif status == "error":
+            print(f"{Colors.RED}[!] {message}{Colors.END}")
+        elif status == "vuln":
+            print(f"{Colors.RED}{Colors.BOLD}[VULN] {message}{Colors.END}")
+        elif status == "advanced":
+            print(f"{Colors.PURPLE}[*] {message}{Colors.END}")
+        elif status == "data":
+            print(f"{Colors.CYAN}[$] {message}{Colors.END}")
     
-    def generate_json(self):
-        """Generate JSON report"""
-        report = {
-            "generated_at": datetime.now().isoformat(),
-            "findings": self.findings,
-            "summary": {
-                "total": len(self.findings),
-                "by_severity": {
-                    "High": len([f for f in self.findings if f.get("severity") == "High"]),
-                    "Medium": len([f for f in self.findings if f.get("severity") == "Medium"]),
-                    "Low": len([f for f in self.findings if f.get("severity") == "Low"])
-                },
-                "by_type": {}
-            }
-        }
+    def generate_report(self, vulnerabilities, sensitive_data):
+        """Generate a comprehensive vulnerability report"""
+        print(f"\n{Colors.CYAN}{'='*80}{Colors.END}")
+        print(f"{Colors.CYAN}{Colors.BOLD}ADVANCED API SECURITY SCAN REPORT{Colors.END}")
+        print(f"{Colors.CYAN}{'='*80}{Colors.END}")
         
-        # Count findings by type
-        for finding in self.findings:
-            finding_type = finding.get("type", "Unknown")
-            if finding_type not in report["summary"]["by_type"]:
-                report["summary"]["by_type"][finding_type] = 0
-            report["summary"]["by_type"][finding_type] += 1
+        if not vulnerabilities:
+            self.print_status("No vulnerabilities found!", "success")
+            return
         
-        return json.dumps(report, indent=2)
-    
-    def generate_html(self):
-        """Generate HTML report"""
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>API Security Assessment Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .header {{ background: #f4f4f4; padding: 20px; border-radius: 5px; }}
-                .finding {{ border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }}
-                .high {{ border-left: 5px solid #dc3545; }}
-                .medium {{ border-left: 5px solid #ffc107; }}
-                .low {{ border-left: 5px solid #28a745; }}
-                .severity-high {{ color: #dc3545; font-weight: bold; }}
-                .severity-medium {{ color: #ffc107; font-weight: bold; }}
-                .severity-low {{ color: #28a745; font-weight: bold; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>API Security Assessment Report</h1>
-                <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                <p>Total Findings: {len(self.findings)}</p>
-            </div>
-        """
+        high_count = sum(1 for v in vulnerabilities if v['severity'] == 'High')
+        medium_count = sum(1 for v in vulnerabilities if v['severity'] == 'Medium')
+        low_count = sum(1 for v in vulnerabilities if v['severity'] == 'Low')
         
-        # Group findings by severity
-        high_findings = [f for f in self.findings if f.get("severity") == "High"]
-        medium_findings = [f for f in self.findings if f.get("severity") == "Medium"]
-        low_findings = [f for f in self.findings if f.get("severity") == "Low"]
+        print(f"\n{Colors.BOLD}Summary:{Colors.END}")
+        print(f"{Colors.RED}High: {high_count}{Colors.END}")
+        print(f"{Colors.YELLOW}Medium: {medium_count}{Colors.END}")
+        print(f"{Colors.BLUE}Low: {low_count}{Colors.END}")
+        print(f"{Colors.BOLD}Total: {len(vulnerabilities)}{Colors.END}")
         
-        # High severity findings
-        if high_findings:
-            html += "<h2>High Severity Findings</h2>"
-            for finding in high_findings:
-                html += f"""
-                <div class="finding high">
-                    <h3>{finding.get('type')} <span class="severity-high">[High]</span></h3>
-                    <p><strong>URL:</strong> {finding.get('url')}</p>
-                    <p><strong>Method:</strong> {finding.get('method')}</p>
-                    <p><strong>Evidence:</strong> {finding.get('evidence')}</p>
-                    <p><strong>Parameters:</strong> {finding.get('params')}</p>
-                </div>
-                """
+        vuln_by_type = {}
+        for vuln in vulnerabilities:
+            if vuln['type'] not in vuln_by_type:
+                vuln_by_type[vuln['type']] = []
+            vuln_by_type[vuln['type']].append(vuln)
         
-        # Medium severity findings
-        if medium_findings:
-            html += "<h2>Medium Severity Findings</h2>"
-            for finding in medium_findings:
-                html += f"""
-                <div class="finding medium">
-                    <h3>{finding.get('type')} <span class="severity-medium">[Medium]</span></h3>
-                    <p><strong>URL:</strong> {finding.get('url')}</p>
-                    <p><strong>Method:</strong> {finding.get('method')}</p>
-                    <p><strong>Evidence:</strong> {finding.get('evidence')}</p>
-                    <p><strong>Parameters:</strong> {finding.get('params')}</p>
-                </div>
-                """
+        print(f"\n{Colors.BOLD}Vulnerabilities by Type:{Colors.END}")
+        for vuln_type, vulns in vuln_by_type.items():
+            severity_color = Colors.RED if any(v['severity'] == 'High' for v in vulns) else Colors.YELLOW if any(v['severity'] == 'Medium' for v in vulns) else Colors.BLUE
+            print(f"{severity_color}{vuln_type}: {len(vulns)}{Colors.END}")
         
-        # Low severity findings
-        if low_findings:
-            html += "<h2>Low Severity Findings</h2>"
-            for finding in low_findings:
-                html += f"""
-                <div class="finding low">
-                    <h3>{finding.get('type')} <span class="severity-low">[Low]</span></h3>
-                    <p><strong>URL:</strong> {finding.get('url')}</p>
-                    <p><strong>Method:</strong> {finding.get('method')}</p>
-                    <p><strong>Evidence:</strong> {finding.get('evidence')}</p>
-                    <p><strong>Parameters:</strong> {finding.get('params')}</p>
-                </div>
-                """
+        self.print_status(f"\nFound {len(vulnerabilities)} vulnerabilities:", "warning")
         
-        html += "</body></html>"
-        return html
-    
-    def generate_markdown(self):
-        """Generate Markdown report"""
-        md = f"""
-# API Security Assessment Report
-
-**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
-**Total Findings**: {len(self.findings)}
-
-## Summary
-
-- **High Severity**: {len([f for f in self.findings if f.get("severity") == "High"])}
-- **Medium Severity**: {len([f for f in self.findings if f.get("severity") == "Medium"])}
-- **Low Severity**: {len([f for f in self.findings if f.get("severity") == "Low"])}
-
-## Findings
-"""
+        for i, vuln in enumerate(vulnerabilities, 1):
+            color = Colors.RED if vuln['severity'] == 'High' else Colors.YELLOW if vuln['severity'] == 'Medium' else Colors.BLUE
+            print(f"\n{color}{i}. {vuln['type']} ({vuln['severity']}){Colors.END}")
+            print(f"   URL: {vuln['url']}")
+            print(f"   Method: {vuln['method']}")
+            if vuln.get('params'):
+                print(f"   Parameters: {vuln['params']}")
+            print(f"   Evidence: {vuln['evidence']}")
         
-        # Group findings by severity
-        for severity in ["High", "Medium", "Low"]:
-            severity_findings = [f for f in self.findings if f.get("severity") == severity]
-            if severity_findings:
-                md += f"\n### {severity} Severity Findings\n"
-                for i, finding in enumerate(severity_findings, 1):
-                    md += f"""
-#### {i}. {finding.get('type')}
-
-- **URL**: {finding.get('url')}
-- **Method**: {finding.get('method')}
-- **Evidence**: {finding.get('evidence')}
-- **Parameters**: {finding.get('params')}
-
-"""
-        
-        return md
-    
-    def generate_report(self, format="markdown"):
-        """Generate report in specified format"""
-        if format.lower() == "json":
-            return self.generate_json()
-        elif format.lower() == "html":
-            return self.generate_html()
-        else:
-            return self.generate_markdown()
+        if sensitive_data:
+            print(f"\n{Colors.CYAN}{'='*80}{Colors.END}")
+            print(f"{Colors.CYAN}{Colors.BOLD}SENSITIVE DATA FINDINGS{Colors.END}")
+            print(f"{Colors.CYAN}{'='*80}{Colors.END}")
+            
+            for i, data in enumerate(sensitive_data, 1):
+                print(f"\n{Colors.CYAN}{i}. {data['type']}{Colors.END}")
+                print(f"   URL: {data['url']}")
+                print(f"   Value: {data['value'][:100]}{'...' if len(data['value']) > 100 else ''}")
