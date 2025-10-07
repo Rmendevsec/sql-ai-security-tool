@@ -1,0 +1,259 @@
+{
+  "target_url": "https://tinamart.com",
+  "scan_timestamp": "2025-10-07 11:02:53",
+  "total_endpoints_found": 36,
+  "endpoints": [
+    {
+      "endpoint": "/profile",
+      "method": "GET",
+      "status": 307,
+      "size": 31,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/profile",
+      "method": "POST",
+      "status": 307,
+      "size": 31,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/profile",
+      "method": "PUT",
+      "status": 307,
+      "size": 31,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/profile",
+      "method": "DELETE",
+      "status": 307,
+      "size": 31,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/profile",
+      "method": "OPTIONS",
+      "status": 307,
+      "size": 31,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/profile",
+      "method": "HEAD",
+      "status": 307,
+      "size": 0,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "GET",
+      "status": 307,
+      "size": 32,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "POST",
+      "status": 307,
+      "size": 32,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "PUT",
+      "status": 307,
+      "size": 32,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "DELETE",
+      "status": 307,
+      "size": 32,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "OPTIONS",
+      "status": 307,
+      "size": 32,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "HEAD",
+      "status": 307,
+      "size": 0,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/orders",
+      "method": "GET",
+      "status": 307,
+      "size": 30,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/orders",
+      "method": "POST",
+      "status": 307,
+      "size": 30,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/orders",
+      "method": "PUT",
+      "status": 307,
+      "size": 30,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/orders",
+      "method": "DELETE",
+      "status": 307,
+      "size": 30,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/orders",
+      "method": "OPTIONS",
+      "status": 307,
+      "size": 30,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/orders",
+      "method": "HEAD",
+      "status": 307,
+      "size": 0,
+      "content_type": ""
+    },
+    {
+      "endpoint": "/settings",
+      "method": "GET",
+      "status": 200,
+      "size": 8310,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/settings",
+      "method": "POST",
+      "status": 200,
+      "size": 8310,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/settings",
+      "method": "PUT",
+      "status": 200,
+      "size": 8310,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/settings",
+      "method": "DELETE",
+      "status": 200,
+      "size": 8310,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/settings",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 8310,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/settings",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/notifications",
+      "method": "GET",
+      "status": 200,
+      "size": 8476,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/notifications",
+      "method": "POST",
+      "status": 200,
+      "size": 8476,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/notifications",
+      "method": "PUT",
+      "status": 200,
+      "size": 8476,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/notifications",
+      "method": "DELETE",
+      "status": 200,
+      "size": 8476,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/notifications",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 8476,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/notifications",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/products",
+      "method": "GET",
+      "status": 200,
+      "size": 6495,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/products",
+      "method": "POST",
+      "status": 200,
+      "size": 6495,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/products",
+      "method": "PUT",
+      "status": 200,
+      "size": 6495,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/products",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6495,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/products",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6495,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "endpoint": "/products",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8"
+    }
+  ]
+}

@@ -1,0 +1,487 @@
+{
+  "target_url": "https://tinamart.com",
+  "scan_timestamp": "2025-10-07 11:27:01",
+  "total_endpoints_found": 60,
+  "endpoints": [
+    {
+      "endpoint": "/",
+      "method": "GET",
+      "status": 200,
+      "size": 6800,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/"
+    },
+    {
+      "endpoint": "/",
+      "method": "POST",
+      "status": 200,
+      "size": 6800,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/"
+    },
+    {
+      "endpoint": "/",
+      "method": "PUT",
+      "status": 200,
+      "size": 6800,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/"
+    },
+    {
+      "endpoint": "/",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6800,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/"
+    },
+    {
+      "endpoint": "/",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6800,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/"
+    },
+    {
+      "endpoint": "/",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/"
+    },
+    {
+      "endpoint": "/?:",
+      "method": "GET",
+      "status": 200,
+      "size": 6806,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/?:"
+    },
+    {
+      "endpoint": "/?:",
+      "method": "POST",
+      "status": 200,
+      "size": 6806,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/?:"
+    },
+    {
+      "endpoint": "/?:",
+      "method": "PUT",
+      "status": 200,
+      "size": 6806,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/?:"
+    },
+    {
+      "endpoint": "/?:",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6806,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/?:"
+    },
+    {
+      "endpoint": "/?:",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6806,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/?:"
+    },
+    {
+      "endpoint": "/?:",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/?:"
+    },
+    {
+      "endpoint": "/blogs",
+      "method": "GET",
+      "status": 200,
+      "size": 6333,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/blogs"
+    },
+    {
+      "endpoint": "/blogs",
+      "method": "POST",
+      "status": 200,
+      "size": 6333,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/blogs"
+    },
+    {
+      "endpoint": "/blogs",
+      "method": "PUT",
+      "status": 200,
+      "size": 6333,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/blogs"
+    },
+    {
+      "endpoint": "/blogs",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6333,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/blogs"
+    },
+    {
+      "endpoint": "/blogs",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6333,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/blogs"
+    },
+    {
+      "endpoint": "/blogs",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/blogs"
+    },
+    {
+      "endpoint": "/category",
+      "method": "GET",
+      "status": 200,
+      "size": 6261,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/category"
+    },
+    {
+      "endpoint": "/category",
+      "method": "POST",
+      "status": 200,
+      "size": 6261,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/category"
+    },
+    {
+      "endpoint": "/category",
+      "method": "PUT",
+      "status": 200,
+      "size": 6261,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/category"
+    },
+    {
+      "endpoint": "/category",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6261,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/category"
+    },
+    {
+      "endpoint": "/category",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6261,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/category"
+    },
+    {
+      "endpoint": "/category",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/category"
+    },
+    {
+      "endpoint": "/cgi-bin/",
+      "method": "GET",
+      "status": 308,
+      "size": 8,
+      "content_type": "",
+      "url": "https://tinamart.com/cgi-bin/"
+    },
+    {
+      "endpoint": "/cgi-bin/",
+      "method": "POST",
+      "status": 308,
+      "size": 8,
+      "content_type": "",
+      "url": "https://tinamart.com/cgi-bin/"
+    },
+    {
+      "endpoint": "/cgi-bin/",
+      "method": "PUT",
+      "status": 308,
+      "size": 8,
+      "content_type": "",
+      "url": "https://tinamart.com/cgi-bin/"
+    },
+    {
+      "endpoint": "/cgi-bin/",
+      "method": "DELETE",
+      "status": 308,
+      "size": 8,
+      "content_type": "",
+      "url": "https://tinamart.com/cgi-bin/"
+    },
+    {
+      "endpoint": "/cgi-bin/",
+      "method": "OPTIONS",
+      "status": 308,
+      "size": 8,
+      "content_type": "",
+      "url": "https://tinamart.com/cgi-bin/"
+    },
+    {
+      "endpoint": "/cgi-bin/",
+      "method": "HEAD",
+      "status": 308,
+      "size": 0,
+      "content_type": "",
+      "url": "https://tinamart.com/cgi-bin/"
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "GET",
+      "status": 307,
+      "size": 32,
+      "content_type": "",
+      "url": "https://tinamart.com/checkout"
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "POST",
+      "status": 307,
+      "size": 32,
+      "content_type": "",
+      "url": "https://tinamart.com/checkout"
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "PUT",
+      "status": 307,
+      "size": 32,
+      "content_type": "",
+      "url": "https://tinamart.com/checkout"
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "DELETE",
+      "status": 307,
+      "size": 32,
+      "content_type": "",
+      "url": "https://tinamart.com/checkout"
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "OPTIONS",
+      "status": 307,
+      "size": 32,
+      "content_type": "",
+      "url": "https://tinamart.com/checkout"
+    },
+    {
+      "endpoint": "/checkout",
+      "method": "HEAD",
+      "status": 307,
+      "size": 0,
+      "content_type": "",
+      "url": "https://tinamart.com/checkout"
+    },
+    {
+      "endpoint": "/compare",
+      "method": "GET",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/compare"
+    },
+    {
+      "endpoint": "/compare",
+      "method": "POST",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/compare"
+    },
+    {
+      "endpoint": "/compare",
+      "method": "PUT",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/compare"
+    },
+    {
+      "endpoint": "/compare",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/compare"
+    },
+    {
+      "endpoint": "/compare",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/compare"
+    },
+    {
+      "endpoint": "/compare",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/compare"
+    },
+    {
+      "endpoint": "/contact",
+      "method": "GET",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/contact"
+    },
+    {
+      "endpoint": "/contact",
+      "method": "POST",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/contact"
+    },
+    {
+      "endpoint": "/contact",
+      "method": "PUT",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/contact"
+    },
+    {
+      "endpoint": "/contact",
+      "method": "DELETE",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/contact"
+    },
+    {
+      "endpoint": "/contact",
+      "method": "OPTIONS",
+      "status": 200,
+      "size": 6259,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/contact"
+    },
+    {
+      "endpoint": "/contact",
+      "method": "HEAD",
+      "status": 200,
+      "size": 0,
+      "content_type": "text/html; charset=utf-8",
+      "url": "https://tinamart.com/contact"
+    },
+    {
+      "endpoint": "/orders",
+      "method": "GET",
+      "status": 307,
+      "size": 30,
+      "content_type": "",
+      "url": "https://tinamart.com/orders"
+    },
+    {
+      "endpoint": "/orders",
+      "method": "POST",
+      "status": 307,
+      "size": 30,
+      "content_type": "",
+      "url": "https://tinamart.com/orders"
+    },
+    {
+      "endpoint": "/orders",
+      "method": "PUT",
+      "status": 307,
+      "size": 30,
+      "content_type": "",
+      "url": "https://tinamart.com/orders"
+    },
+    {
+      "endpoint": "/orders",
+      "method": "DELETE",
+      "status": 307,
+      "size": 30,
+      "content_type": "",
+      "url": "https://tinamart.com/orders"
+    },
+    {
+      "endpoint": "/orders",
+      "method": "OPTIONS",
+      "status": 307,
+      "size": 30,
+      "content_type": "",
+      "url": "https://tinamart.com/orders"
+    },
+    {
+      "endpoint": "/orders",
+      "method": "HEAD",
+      "status": 307,
+      "size": 0,
+      "content_type": "",
+      "url": "https://tinamart.com/orders"
+    },
+    {
+      "endpoint": "/profile",
+      "method": "GET",
+      "status": 307,
+      "size": 31,
+      "content_type": "",
+      "url": "https://tinamart.com/profile"
+    },
+    {
+      "endpoint": "/profile",
+      "method": "POST",
+      "status": 307,
+      "size": 31,
+      "content_type": "",
+      "url": "https://tinamart.com/profile"
+    },
+    {
+      "endpoint": "/profile",
+      "method": "PUT",
+      "status": 307,
+      "size": 31,
+      "content_type": "",
+      "url": "https://tinamart.com/profile"
+    },
+    {
+      "endpoint": "/profile",
+      "method": "DELETE",
+      "status": 307,
+      "size": 31,
+      "content_type": "",
+      "url": "https://tinamart.com/profile"
+    },
+    {
+      "endpoint": "/profile",
+      "method": "OPTIONS",
+      "status": 307,
+      "size": 31,
+      "content_type": "",
+      "url": "https://tinamart.com/profile"
+    },
+    {
+      "endpoint": "/profile",
+      "method": "HEAD",
+      "status": 307,
+      "size": 0,
+      "content_type": "",
+      "url": "https://tinamart.com/profile"
+    }
+  ]
+}
