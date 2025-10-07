@@ -1,4 +1,4 @@
-from crawler import Colors
+from core_api.api_ai_scanner.crawler import Colors
 
 class ReportGenerator:
     def __init__(self):

@@ -8,11 +8,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 # Import your modules (assume classes exist as in your project)
-from crawler import Crawler
-from fuzzer import Fuzzer
-from parser import Parser
-from auth import AuthTester
-from report import ReportGenerator
+from core_api.api_ai_scanner.crawler import Crawler
+from core_api.api_ai_scanner.fuzzer import Fuzzer
+from core_api.api_ai_scanner.parser import Parser
+from core_api.api_ai_scanner.auth import AuthTester
+from core_api.api_ai_scanner.report import ReportGenerator
 
 # Try to import optional helpers (if you added them)
 try:

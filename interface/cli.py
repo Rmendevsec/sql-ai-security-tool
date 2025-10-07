@@ -5,7 +5,7 @@ SQL-AI Security Tool - CLI Menu
 
 import sys
 from utils import logger, output
-from core_api import crawler
+from core_api.api_ai_scanner import crawler
 from core_sql import scanner, injector
 from core_ai import inference
 

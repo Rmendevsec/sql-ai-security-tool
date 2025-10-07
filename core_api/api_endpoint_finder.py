@@ -14,17 +14,24 @@ from collections import defaultdict
 import threading
 import warnings
 import urllib3
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# Disable SSL warnings
+# Suppress SSL warnings
 warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 class CompetitiveAPIFinder:
-    def __init__(self, target_url, max_threads=50, timeout=8, user_agent=None):
+    def __init__(self, target_url, max_threads=50, timeout=8, user_agent=None, verify_ssl=False):
         self.target_url = target_url.rstrip('/')
         self.base_domain = urlparse(target_url).netloc
         self.max_threads = max_threads
         self.timeout = timeout
-        self.session = requests.Session()
+        self.verify_ssl = verify_ssl
+        
+        # Create session with proper SSL handling
+        self.session = self.create_session()
         self.user_agent = user_agent or 'Mozilla/5.0 (compatible; AdvancedScanner/1.0)'
         self.session.headers.update({'User-Agent': self.user_agent})
         
@@ -42,59 +49,146 @@ class CompetitiveAPIFinder:
         self.excluded_sizes = set()
         self.content_filters = []
 
-    def load_wordlist(self, wordlist_file=None):
-        """Load wordlist from file or use built-in comprehensive list"""
-        if wordlist_file and os.path.exists(wordlist_file):
-            with open(wordlist_file, 'r', encoding='utf-8', errors='ignore') as f:
-                endpoints = [line.strip() for line in f if line.strip()]
-            print(f"[*] Loaded {len(endpoints)} endpoints from {wordlist_file}")
-        else:
-            # Use the comprehensive built-in wordlist
-            endpoints = self.get_comprehensive_wordlist()
-            print(f"[*] Using built-in wordlist with {len(endpoints)} endpoints")
+    def create_session(self):
+        """Create requests session with proper SSL handling and retry strategy"""
+        session = requests.Session()
         
-        return endpoints
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST", "HEAD", "OPTIONS"]
+        )
+        
+        # Create adapter with retry strategy
+        adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=100, pool_maxsize=100)
+        
+        # Mount adapters
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        # SSL configuration
+        if not self.verify_ssl:
+            session.verify = False
+        
+        return session
+
+    def load_combined_wordlists(self, user_wordlist_file=None, use_system_wordlist=True):
+        """Load both user wordlist and system wordlist, combining them"""
+        endpoints = set()
+        
+        # Load user wordlist if provided
+        if user_wordlist_file and os.path.exists(user_wordlist_file):
+            with open(user_wordlist_file, 'r', encoding='utf-8', errors='ignore') as f:
+                user_endpoints = {line.strip() for line in f if line.strip()}
+            endpoints.update(user_endpoints)
+            print(f"[*] Loaded {len(user_endpoints)} endpoints from user wordlist: {user_wordlist_file}")
+        elif user_wordlist_file:
+            print(f"[-] User wordlist not found: {user_wordlist_file}")
+        
+        # Load system wordlist if requested
+        if use_system_wordlist:
+            system_endpoints = self.get_comprehensive_wordlist()
+            endpoints.update(system_endpoints)
+            print(f"[*] Loaded {len(system_endpoints)} endpoints from system wordlist")
+        
+        # Convert to list and sort
+        endpoints_list = list(endpoints)
+        endpoints_list.sort()
+        
+        print(f"[*] Combined wordlist total: {len(endpoints_list)} endpoints")
+        return endpoints_list
 
     def get_comprehensive_wordlist(self):
-        """Return the comprehensive wordlist"""
-        # This would contain your entire wordlist
-        # For brevity, I'll show the structure - you'd paste your full list here
-        base_endpoints = [
+        """Return the comprehensive system wordlist"""
+        # Your complete system wordlist goes here
+        system_endpoints = [
             # API endpoints
             '/api', '/api/v1', '/api/v2', '/api/v3', '/v1', '/v2', '/v3',
             '/rest', '/rest/api', '/graphql', '/gql',
             
-            # Admin endpoints
-            '/admin', '/administrator', '/wp-admin', '/manager',
-            '/admin/login', '/admin/dashboard', '/admin/config',
+            # Authentication
+            '/auth', '/oauth', '/oauth2', '/openid', '/login', '/logout',
+            '/signin', '/signup', '/register', '/token', '/refresh',
+            
+            # User management
+            '/users', '/user', '/profile', '/account', '/me', '/self',
+            '/admin/users', '/customers', '/clients', '/members',
+            
+            # Administrative
+            '/admin', '/administrator', '/manager', '/admin/dashboard',
+            '/admin/panel', '/admin/settings', '/admin/config',
+            '/wp-admin', '/administrator/login',
+            
+            # Data operations
+            '/data', '/entities', '/resources', '/create', '/read',
+            '/update', '/delete', '/list', '/get', '/post', '/put',
+            '/patch', '/search', '/query', '/filter', '/find',
+            
+            # File operations
+            '/files', '/file', '/documents', '/images', '/uploads',
+            '/downloads', '/assets', '/storage', '/static', '/public',
+            
+            # Service endpoints
+            '/service', '/services', '/microservice', '/gateway',
+            '/health', '/status', '/ready', '/live', '/metrics',
+            '/actuator', '/management',
+            
+            # Documentation
+            '/docs', '/documentation', '/api-docs', '/swagger',
+            '/swagger-ui', '/openapi', '/redoc',
+            
+            # Webhooks
+            '/webhook', '/webhooks', '/hook', '/callback',
+            '/notification', '/notify',
+            
+            # Payment
+            '/payment', '/pay', '/checkout', '/billing',
+            '/invoice', '/subscription', '/order', '/orders',
+            
+            # Development
+            '/test', '/testing', '/dev', '/development',
+            '/staging', '/sandbox', '/debug',
             
             # Common directories
             '/images', '/css', '/js', '/assets', '/static', '/public',
             '/uploads', '/downloads', '/files', '/documents',
             
             # Configuration files
-            '/.env', '/config.json', '/configuration.yml',
-            '/.git/config', '/.htaccess', '/web.config',
+            '/.env', '/config.json', '/configuration.yml', '/config.xml',
+            '/.git/config', '/.htaccess', '/web.config', '/robots.txt',
             
             # Backup files
-            '/backup', '/backups', '/bak', '/old', '/temp',
+            '/backup', '/backups', '/bak', '/old', '/temp', '/tmp',
             
-            # Your entire wordlist would go here...
-            # Include all the endpoints from your previous list
+            # Common numeric endpoints
+            '/0', '/1', '/2', '/3', '/4', '/5', '/6', '/7', '/8', '/9',
+            '/00', '/01', '/02', '/03', '/10', '/100', '/1000',
+            
+            # Common alphabetical endpoints
+            '/a', '/b', '/c', '/d', '/e', '/f', '/g', '/h', '/i', '/j',
+            '/k', '/l', '/m', '/n', '/o', '/p', '/q', '/r', '/s', '/t',
+            '/u', '/v', '/w', '/x', '/y', '/z',
+            
+            # Add more from your comprehensive wordlist...
+            # This is a sample - include all your system endpoints
+            
         ]
         
-        # Add common extensions
-        extensions = ['', '.php', '.html', '.jsp', '.asp', '.aspx', '.json', '.xml']
+        # Add common extensions to system endpoints
+        extensions = ['', '.php', '.html', '.jsp', '.asp', '.aspx', '.json', '.xml', '.txt']
         extended_endpoints = []
         
-        for endpoint in base_endpoints:
+        for endpoint in system_endpoints:
             for ext in extensions:
                 extended_endpoints.append(endpoint + ext)
         
+        # Remove duplicates
         return list(set(extended_endpoints))
 
     def scan_endpoint(self, endpoint):
-        """Advanced endpoint scanning with multiple techniques"""
+        """Advanced endpoint scanning with proper SSL handling"""
         full_url = urljoin(self.target_url, endpoint)
         results = []
         
@@ -105,10 +199,11 @@ class CompetitiveAPIFinder:
         for method in methods:
             try:
                 response = self.session.request(
-                    method, full_url, 
+                    method, 
+                    full_url, 
                     timeout=self.timeout,
                     allow_redirects=False,
-                    verify=False  # For testing purposes only
+                    verify=self.verify_ssl
                 )
                 
                 if self.is_interesting_response(response, endpoint):
@@ -124,6 +219,8 @@ class CompetitiveAPIFinder:
                     }
                     results.append(result)
                     
+            except requests.exceptions.SSLError as e:
+                continue
             except requests.exceptions.RequestException as e:
                 continue
             except Exception as e:
@@ -188,6 +285,8 @@ class CompetitiveAPIFinder:
     def brute_force_endpoints(self, endpoints):
         """High-performance brute force scanning"""
         print(f"[*] Scanning {len(endpoints)} endpoints with {self.max_threads} threads...")
+        if not self.verify_ssl:
+            print("[*] SSL verification disabled - ignoring certificate warnings")
         
         all_results = []
         start_time = time.time()
@@ -248,10 +347,6 @@ class CompetitiveAPIFinder:
                 new_endpoints = self.extract_endpoints_from_html(soup, url)
                 discovered_endpoints.update(new_endpoints)
                 
-                # Find new pages to crawl
-                new_urls = self.extract_urls_from_html(soup, url)
-                pages_to_crawl.update(new_urls - crawled_pages)
-                
                 crawled_pages.add(url)
                 
             except Exception as e:
@@ -275,18 +370,6 @@ class CompetitiveAPIFinder:
             if self.is_potential_endpoint(action):
                 endpoints.add(action)
         
-        # Scripts and assets
-        for script in soup.find_all('script', src=True):
-            src = script['src']
-            if self.is_potential_endpoint(src):
-                endpoints.add(src)
-        
-        # Meta tags
-        for meta in soup.find_all('meta', content=True):
-            content = meta['content']
-            if 'url' in content.lower() and self.is_potential_endpoint(content):
-                endpoints.add(content)
-        
         return endpoints
 
     def is_potential_endpoint(self, url):
@@ -300,15 +383,6 @@ class CompetitiveAPIFinder:
         if any(url.lower().endswith(ext) for ext in static_extensions):
             return False
         
-        # Look for API patterns
-        api_patterns = ['/api/', '/v1/', '/v2/', '/rest/', '/graphql', '/endpoint']
-        if any(pattern in url.lower() for pattern in api_patterns):
-            return True
-        
-        # Parameters often indicate endpoints
-        if '?' in url and any(param in url.lower() for param in ['id=', 'token=', 'key=', 'api=']):
-            return True
-        
         return True
 
     def generate_comprehensive_report(self, results):
@@ -319,6 +393,7 @@ class CompetitiveAPIFinder:
                 'scan_timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'scan_duration': getattr(self, 'scan_duration', 0),
                 'total_endpoints_tested': getattr(self, 'total_tested', 0),
+                'ssl_verification': self.verify_ssl,
             },
             'results': {
                 'total_found': len(results),
@@ -339,26 +414,41 @@ class CompetitiveAPIFinder:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Advanced Web Endpoint Scanner - Competitive with GoBuster',
+        description='Advanced Web Endpoint Scanner - Uses both user and system wordlists',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  %(prog)s https://example.com -w common.txt -t 100
-  %(prog)s https://api.example.com --crawl --methods GET,POST -o results.json
-  %(prog)s https://test.com -x php,html --filter-status 200,301,302
+  # Use only user wordlist
+  %(prog)s https://example.com -w my_wordlist.txt
+  
+  # Use only system wordlist
+  %(prog)s https://example.com --system-only
+  
+  # Use both user and system wordlists (default)
+  %(prog)s https://example.com -w my_wordlist.txt
+  
+  # Use system wordlist only with extensions
+  %(prog)s https://example.com --system-only -x php,html
+  
+  # Quick scan with small combined wordlist
+  %(prog)s https://example.com -w small_list.txt --quick
         '''
     )
     
     parser.add_argument('url', help='Target URL to scan')
-    parser.add_argument('-w', '--wordlist', help='Path to wordlist file')
+    parser.add_argument('-w', '--wordlist', help='Path to user wordlist file')
+    parser.add_argument('--system-only', action='store_true', help='Use only system wordlist (ignore user wordlist)')
+    parser.add_argument('--no-system', action='store_true', help='Use only user wordlist (ignore system wordlist)')
     parser.add_argument('-t', '--threads', type=int, default=50, help='Number of threads (default: 50)')
     parser.add_argument('-o', '--output', help='Output file (JSON)')
     parser.add_argument('--crawl', action='store_true', help='Enable page crawling')
+    parser.add_argument('--verify-ssl', action='store_true', help='Enable SSL certificate verification')
     parser.add_argument('--methods', default='GET,POST,HEAD', help='HTTP methods to try')
     parser.add_argument('-x', '--extensions', help='File extensions to append')
     parser.add_argument('--filter-status', help='Only show these status codes')
     parser.add_argument('--timeout', type=int, default=8, help='Request timeout')
     parser.add_argument('--rate-limit', type=float, help='Requests per second')
+    parser.add_argument('--quick', action='store_true', help='Quick scan (first 500 endpoints only)')
     
     args = parser.parse_args()
     
@@ -367,18 +457,31 @@ Examples:
         sys.exit(1)
     
     try:
-        print(f"[*] Starting Competitive Web Endpoint Scanner")
+        print(f"[*] Starting Advanced Web Endpoint Scanner")
         print(f"[*] Target: {args.url}")
         print(f"[*] Threads: {args.threads}")
+        print(f"[*] SSL Verification: {'Enabled' if args.verify_ssl else 'Disabled'}")
         
         scanner = CompetitiveAPIFinder(
             target_url=args.url,
             max_threads=args.threads,
-            timeout=args.timeout
+            timeout=args.timeout,
+            verify_ssl=args.verify_ssl
         )
         
-        # Load wordlist
-        endpoints = scanner.load_wordlist(args.wordlist)
+        # Determine wordlist strategy
+        use_system_wordlist = not args.no_system
+        user_wordlist_file = args.wordlist if not args.system_only else None
+        
+        # Load combined wordlists
+        endpoints = scanner.load_combined_wordlists(
+            user_wordlist_file=user_wordlist_file,
+            use_system_wordlist=use_system_wordlist
+        )
+        
+        if not endpoints:
+            print("[-] No endpoints to scan. Please provide a wordlist or enable system wordlist.")
+            sys.exit(1)
         
         # Apply extensions if specified
         if args.extensions:
@@ -390,6 +493,12 @@ Examples:
                         extended_endpoints.append(endpoint + '.' + ext)
             endpoints.extend(extended_endpoints)
             print(f"[*] Extended wordlist to {len(endpoints)} endpoints with extensions")
+        
+        # Quick scan mode
+        if args.quick:
+            original_count = len(endpoints)
+            endpoints = endpoints[:500]
+            print(f"[*] Quick scan enabled - using first {len(endpoints)} endpoints (from {original_count})")
         
         start_time = time.time()
         
@@ -420,6 +529,7 @@ Examples:
         print(f"Endpoints tested: {scanner.total_tested}")
         print(f"Interesting endpoints found: {len(results)}")
         print(f"Requests/sec: {scanner.total_tested/scanner.scan_duration:.1f}")
+        print(f"Wordlist: {'User + System' if args.wordlist and use_system_wordlist else 'System only' if use_system_wordlist else 'User only'}")
         
         # Status breakdown
         print(f"\nStatus Code Breakdown:")
@@ -443,6 +553,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-    
-    
-    

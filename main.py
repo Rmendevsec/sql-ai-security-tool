@@ -6,10 +6,10 @@ Main entry point for CLI usage.
 
 import argparse
 import sys
-from core_api.crawler import APICrawler
-from core_api.fuzzer import APIFuzzer
-from core_api.auth import AuthTester
-from core_api.report import ReportGenerator
+from core_api.api_ai_scanner.crawler import APICrawler
+from core_api.api_ai_scanner.fuzzer import APIFuzzer
+from core_api.api_ai_scanner.auth import AuthTester
+from core_api.api_ai_scanner.report import ReportGenerator
 from core_sql import scanner, injector
 from core_ai import inference
 from utils import logger, output
